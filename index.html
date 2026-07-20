@@ -518,7 +518,7 @@ function OfferFormModal({onClose, initial, equipment, packages, tiers, clients, 
     <div className="overlay" onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
       <div className="modal">
         <button className="close-x" onClick={onClose}>×</button>
-        <h2>Nowa oferta / kalkulator</h2>
+        <h2>{f.id?"Edytuj ofertę / rezerwację":"Nowa oferta / kalkulator"}</h2>
         <div className="row2">
           <div className="field"><label>Telefon</label><input value={f.phone} onChange={e=>set("phone",e.target.value)} placeholder="600 111 222"/></div>
           <div className="field"><label>Imię i nazwisko (opcjonalne)</label><input value={f.name} onChange={e=>set("name",e.target.value)}/></div>
@@ -540,8 +540,16 @@ function OfferFormModal({onClose, initial, equipment, packages, tiers, clients, 
         {(()=>{ const activeTier = tiers.find(t=>t.mode===f.mode); return activeTier && activeTier.show_upsell && activeTier.upsell_text ?
           <div className="banner ok" style={{fontSize:12}}>💡 {activeTier.upsell_text}</div> : null; })()}
         <div className="row2">
+          <div className="field"><label>Data rozpoczęcia</label><input type="date" value={`${f.year}-${String(f.month+1).padStart(2,'0')}-${String(f.day).padStart(2,'0')}`} onChange={e=>{ const [y,m,d]=e.target.value.split('-').map(Number); setF(p=>({...p,year:y,month:m-1,day:d})); }}/></div>
           <div className="field"><label>Ilość dób</label><input type="number" min="1" value={f.qty} onChange={e=>set("qty",+e.target.value||1)}/></div>
+        </div>
+        <div className="row2">
           <div className="field"><label>Odległość od bazy (km)</label><input type="number" value={f.km} onChange={e=>set("km",+e.target.value||0)}/></div>
+          <div className="field"><label>Status</label>
+            <select value={f.status||"draft"} onChange={e=>set("status",e.target.value)}>
+              <option value="draft">Robocza</option><option value="sent">Wysłana</option><option value="accepted">Zaakceptowana</option><option value="done">Zrealizowana</option>
+            </select>
+          </div>
         </div>
         {equipment.filter(e=>e.id!==f.equipment_id).length>0 && <>
           <label>Zestaw — dołącz dodatkowy sprzęt</label>
@@ -595,15 +603,17 @@ function OfferFormModal({onClose, initial, equipment, packages, tiers, clients, 
         <label style={{marginTop:12}}>Podgląd SMS</label>
         <div className="card" style={{fontSize:12.5,whiteSpace:"pre-wrap",background:"#faf9f5"}}>{offerMsg(f,f.name,settings,equipment,packages,tiers)}</div>
         <div className="modal-actions">
-          <button className="btn ghost" onClick={()=>onSave(f,"draft")}>Zapisz roboczą</button>
-          <button className="btn primary" onClick={()=>onSave(f,"draft_send")}>Zapisz i wyślij</button>
+          {f.id ? <button className="btn primary" onClick={()=>onSave(f,"update")}>Zapisz zmiany</button> : <>
+            <button className="btn ghost" onClick={()=>onSave(f,"draft")}>Zapisz roboczą</button>
+            <button className="btn primary" onClick={()=>onSave(f,"draft_send")}>Zapisz i wyślij</button>
+          </>}
         </div>
       </div>
     </div>
   );
 }
 
-function OfferDetailModal({offer,onClose,equipment,packages,tiers,clients,settings,vouchers,onToggleZadatek}){
+function OfferDetailModal({offer,onClose,equipment,packages,tiers,clients,settings,vouchers,onToggleZadatek,onEdit,onDelete}){
   const eq = equipment.find(e=>e.id===offer.equipment_id);
   const calc = computeCalc(offer,equipment,settings,packages,clients,vouchers);
   const c = clients.find(c=>c.phone===offer.phone);
@@ -639,6 +649,10 @@ function OfferDetailModal({offer,onClose,equipment,packages,tiers,clients,settin
         <div className="card" style={{marginTop:12,cursor:"pointer",background:offer.zadatek_paid?"var(--green-l)":"#f6f4ee"}} onClick={()=>onToggleZadatek(offer)}>
           <b style={{color:offer.zadatek_paid?"var(--green-d)":"var(--muted)"}}>{offer.zadatek_paid?"✅ Zadatek wpłacony":"⬜ Oznacz zadatek jako wpłacony"}</b>
         </div>
+        <div style={{display:"flex",gap:8,marginTop:12}}>
+          <button className="btn ghost" style={{flex:1}} onClick={onEdit}>✏️ Edytuj</button>
+          <button className="btn ghost" style={{flex:1,color:"#b3261e",borderColor:"#e3b3ab"}} onClick={onDelete}>🗑 Usuń</button>
+        </div>
       </div>
     </div>
   );
@@ -646,6 +660,7 @@ function OfferDetailModal({offer,onClose,equipment,packages,tiers,clients,settin
 
 function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,settings,vouchers,setVouchers,flash,setErr}){
   const [modal,setModal]=useState(null); // 'new' or offer object for detail
+  const [editingOffer,setEditingOffer]=useState(null);
   const [view,setView]=useState("active"); // active | expired | done
   const [voucherModal,setVoucherModal]=useState(false);
 
@@ -691,15 +706,27 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
         addon_ids:f.addon_ids, extra_equip_ids:f.extra_equip_ids, custom_items:f.custom_items,
         rate_override: f.rate_override===""?null:+f.rate_override, transport_override: f.transport_override===""?null:+f.transport_override,
         zadatek_override: f.zadatek_override===""?null:+f.zadatek_override, deposit_override: f.deposit_override===""?null:+f.deposit_override,
-        voucher_code:f.voucher_code, offer_cost:f.offer_cost, year:f.year, month:f.month, day:f.day, days:f.days||1,
-        status, expires_at: computeExpiry(settings), zadatek_paid:false };
-      const ins = await sbInsert("gs_offers",body);
+        voucher_code:f.voucher_code, offer_cost:f.offer_cost, year:f.year, month:f.month, day:f.day, days:f.days||1 };
+      if(f.id){
+        await sbUpdate("gs_offers","id",f.id,{...body,status:f.status||"draft"});
+        setOffers(p=>p.map(x=>x.id===f.id?{...x,...body,status:f.status||"draft"}:x));
+        setModal(null); setEditingOffer(null);
+        flash("Zaktualizowano ofertę.");
+        return;
+      }
+      const insertBody = {...body, status, expires_at: computeExpiry(settings), zadatek_paid:false };
+      const ins = await sbInsert("gs_offers",insertBody);
       const newOffer = {...ins[0], addon_ids:ins[0].addon_ids||[], extra_equip_ids:ins[0].extra_equip_ids||[], custom_items:ins[0].custom_items||[]};
       setOffers(p=>[newOffer,...p]);
       setModal(null);
       if(mode==="draft_send") openShare(newOffer,"wa");
       flash("Zapisano ofertę.");
     }catch(ex){ setErr(String(ex.message||ex)); }
+  };
+  const delOffer = async (o) => {
+    if(!confirm("Usunąć tę ofertę/rezerwację? Tej operacji nie można cofnąć.")) return;
+    try{ await sbDelete("gs_offers",o.id); setOffers(p=>p.filter(x=>x.id!==o.id)); setModal(null); flash("Usunięto ofertę."); }
+    catch(ex){ setErr(String(ex.message||ex)); }
   };
 
   const advance = async (o) => {
@@ -762,8 +789,8 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
           </div>
         </div>); })}
 
-      {modal==="new" && <OfferFormModal onClose={()=>setModal(null)} initial={emptyForm(settings)} equipment={equipment} packages={packages} tiers={tiers} clients={clients} settings={settings} vouchers={vouchers} onSave={saveOffer}/>}
-      {modal && modal!=="new" && <OfferDetailModal offer={modal} onClose={()=>setModal(null)} equipment={equipment} packages={packages} tiers={tiers} clients={clients} settings={settings} vouchers={vouchers} onToggleZadatek={toggleZadatek}/>}
+      {(modal==="new"||editingOffer) && <OfferFormModal onClose={()=>{setModal(null);setEditingOffer(null);}} initial={editingOffer||emptyForm(settings)} equipment={equipment} packages={packages} tiers={tiers} clients={clients} settings={settings} vouchers={vouchers} onSave={saveOffer}/>}
+      {modal && modal!=="new" && <OfferDetailModal offer={modal} onClose={()=>setModal(null)} equipment={equipment} packages={packages} tiers={tiers} clients={clients} settings={settings} vouchers={vouchers} onToggleZadatek={toggleZadatek} onEdit={()=>{setEditingOffer(modal);setModal(null);}} onDelete={()=>delOffer(modal)}/>}
       {voucherModal && <VoucherModal onClose={()=>setVoucherModal(false)} settings={settings} onSaved={(v)=>{ }} setErr={setErr} flash={flash} onCreated={(row)=>{ }} setVouchers={setVouchers}/>}
     </div>
   );
