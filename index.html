@@ -356,7 +356,7 @@ function Kalendarz({equipment,offers,clients}){
   const booked = {};
   offers.filter(o=>o.status!=="draft" && o.year===ym.y && o.month===ym.m).forEach(o=>{
     const eq = equipment.find(e=>e.id===o.equipment_id);
-    for(let d=o.day; d<o.day+(o.days||1); d++) booked[d]={color:eq?eq.color||"#153826":"#153826", shape:eq?eq.shape||"square":"square"};
+    for(let d=o.day; d<o.day+(o.days||1); d++) booked[d]={color:eq?eq.color||"#153826":"#153826", shape:eq?eq.shape||"square":"square", pending:o.status==="sent"};
   });
   const cells=[]; for(let i=0;i<startOffset;i++) cells.push(null);
   for(let d=1; d<=last.getDate(); d++) cells.push(d);
@@ -378,18 +378,25 @@ function Kalendarz({equipment,offers,clients}){
             if(d==null) return <div key={i} className="calcell" style={{background:"#f8f7f1",border:"none"}}/>;
             const dow=(startOffset+d-1)%7; const isWeekend=dow===5||dow===6;
             const b=booked[d];
-            const radius = b ? (b.shape==='round'?'50%':b.shape==='cylinder'?'22%':'0px') : '8px';
+            const isCyl = b && b.shape==='cylinder';
+            const radius = b ? (b.shape==='round'?'50%':isCyl?'50%/30%':'0px') : '8px';
+            const pending = b && b.pending;
             return (<div key={i} className="calcell" style={{
               background:b?b.color:(isWeekend?"#f4ecdc":"#fff"),
               color:b?"#fff":"var(--ink)",
-              border:isWeekend?"1.5px solid #d8c68a":"1px solid var(--line)",
-              borderRadius:radius
-            }}>{d}</div>);
+              border:pending?`1.5px dashed ${b.color}`:(isWeekend?"1.5px solid #d8c68a":"1px solid var(--line)"),
+              borderRadius:radius,position:"relative",overflow:"hidden"
+            }}>
+              {isCyl && !pending && <><span style={{position:"absolute",left:0,right:0,top:"28%",height:1,background:"rgba(255,255,255,.45)"}}/><span style={{position:"absolute",left:0,right:0,top:"68%",height:1,background:"rgba(255,255,255,.45)"}}/></>}
+              <span style={{position:"relative",zIndex:1}}>{d}</span>
+            </div>);
           })}
         </div>
         <div style={{display:"flex",gap:14,flexWrap:"wrap",fontSize:11,color:"var(--muted)",marginBottom:16}}>
-          {equipment.map(e=>(<span key={e.id}><span style={{display:"inline-block",width:9,height:9,background:e.color||"#153826",
-            borderRadius:e.shape==='round'?'50%':e.shape==='cylinder'?'22%':2,marginRight:5}}/>{e.name}</span>))}
+          {equipment.map(e=>(<span key={e.id}><span style={{display:"inline-block",width:12,height:9,background:e.color||"#153826",position:"relative",overflow:"hidden",
+            borderRadius:e.shape==='round'?'50%':e.shape==='cylinder'?'50%/30%':2,marginRight:5}}>
+            {e.shape==='cylinder' && <><span style={{position:"absolute",left:0,right:0,top:"28%",height:1,background:"rgba(255,255,255,.45)"}}/><span style={{position:"absolute",left:0,right:0,top:"68%",height:1,background:"rgba(255,255,255,.45)"}}/></>}
+            </span>{e.name}</span>))}
         </div>
         <h3 style={{fontSize:12,color:"var(--muted)",textTransform:"uppercase",marginBottom:8}}>Rezerwacje w tym miesiącu</h3>
         {monthOffers.length===0 && <div className="empty">Brak rezerwacji.</div>}
