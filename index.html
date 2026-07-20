@@ -180,6 +180,14 @@ function computeCalc(f, equipment, settings, packages, clients, vouchers){
   return { rental: rentalAfterReferral, extraEquip, discountAmt, discountPct, transport, addonsSum, customSum, deposit, zadatek: zad, total, billKm, voucher, voucherUsable, voucherAmt, offerCost, eq };
 }
 
+function computeExpiry(settings){
+  const mode = settings.offer_valid_mode||'hours';
+  if(mode==='until_date' && settings.offer_valid_date) return new Date(settings.offer_valid_date+'T23:59:59').toISOString();
+  const val = +settings.offer_valid_value||48;
+  const ms = mode==='days' ? val*86400000 : val*3600000;
+  return new Date(Date.now()+ms).toISOString();
+}
+
 function tierLabel(tiers, mode, qty){
   const t = (tiers||[]).find(x=>x.mode===mode);
   if(t && (mode!=='day' || qty===1)) return t.title;
@@ -232,7 +240,7 @@ function App(){
   const [msg,setMsg]=useState(null);
   const [loading,setLoading]=useState(true);
 
-  const [settings,setSettings]=useState({free_km:60,km_rate:2,zadatek:200,referral_pct:15,offer_valid_hours:48,blik_phone:'',company_name:'GardenSpa'});
+  const [settings,setSettings]=useState({free_km:60,km_rate:2,zadatek:200,referral_pct:15,offer_valid_mode:'hours',offer_valid_value:48,offer_valid_date:'',blik_phone:'',company_name:'GardenSpa'});
   const [equipment,setEquipment]=useState([]);
   const [packages,setPackages]=useState([]);
   const [tiers,setTiers]=useState([]);
@@ -684,7 +692,7 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
         rate_override: f.rate_override===""?null:+f.rate_override, transport_override: f.transport_override===""?null:+f.transport_override,
         zadatek_override: f.zadatek_override===""?null:+f.zadatek_override, deposit_override: f.deposit_override===""?null:+f.deposit_override,
         voucher_code:f.voucher_code, offer_cost:f.offer_cost, year:f.year, month:f.month, day:f.day, days:f.days||1,
-        status, expires_at: new Date(Date.now()+(settings.offer_valid_hours||48)*3600000).toISOString(), zadatek_paid:false };
+        status, expires_at: computeExpiry(settings), zadatek_paid:false };
       const ins = await sbInsert("gs_offers",body);
       const newOffer = {...ins[0], addon_ids:ins[0].addon_ids||[], extra_equip_ids:ins[0].extra_equip_ids||[], custom_items:ins[0].custom_items||[]};
       setOffers(p=>[newOffer,...p]);
@@ -705,7 +713,7 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
     catch(ex){ setErr(String(ex.message||ex)); }
   };
   const refreshExpiry = async (o) => {
-    try{ const exp=new Date(Date.now()+(settings.offer_valid_hours||48)*3600000).toISOString();
+    try{ const exp=computeExpiry(settings);
       await sbUpdate("gs_offers","id",o.id,{expires_at:exp}); setOffers(p=>p.map(x=>x.id===o.id?{...x,expires_at:exp}:x)); flash("Odświeżono ważność oferty."); }
     catch(ex){ setErr(String(ex.message||ex)); }
   };
@@ -1040,7 +1048,16 @@ function Ustawienia({settings,setSettings,equipment,setEquipment,packages,setPac
           <div><label>Zadatek przy rezerwacji (zł)</label><input type="number" defaultValue={settings.zadatek} onBlur={ev=>saveSettings({zadatek:+ev.target.value||0})}/></div>
           <div><label>Rabat za polecenie (%)</label><input type="number" defaultValue={settings.referral_pct} onBlur={ev=>saveSettings({referral_pct:+ev.target.value||0})}/></div>
         </div>
-        <div className="field"><label>Ważność oferty (godz.)</label><input type="number" defaultValue={settings.offer_valid_hours} onBlur={ev=>saveSettings({offer_valid_hours:+ev.target.value||0})}/></div>
+        <div className="field"><label>Ważność oferty</label>
+          <div style={{display:"flex",gap:6,marginBottom:6}}>
+            {[["hours","Godziny"],["days","Dni"],["until_date","Do daty"]].map(([v,l])=>(
+              <span key={v} className={"chip"+(settings.offer_valid_mode===v?" on":"")} onClick={()=>saveSettings({offer_valid_mode:v})}>{l}</span>
+            ))}
+          </div>
+          {settings.offer_valid_mode==='until_date'
+            ? <input type="date" defaultValue={settings.offer_valid_date} onBlur={ev=>saveSettings({offer_valid_date:ev.target.value})}/>
+            : <input type="number" defaultValue={settings.offer_valid_value} onBlur={ev=>saveSettings({offer_valid_value:+ev.target.value||0})} placeholder={settings.offer_valid_mode==='days'?'liczba dni':'liczba godzin'}/>}
+        </div>
         <div className="field"><label>Numer telefonu do BLIK (zadatek)</label><input defaultValue={settings.blik_phone} onBlur={ev=>saveSettings({blik_phone:ev.target.value})}/></div>
         <div className="muted" style={{fontSize:11}}>Kaucja zwrotna ustawiasz osobno dla każdego sprzętu powyżej.</div>
       </div>
@@ -1063,6 +1080,9 @@ create table if not exists gs_settings (
   zadatek numeric default 200, referral_pct numeric default 15,
   offer_valid_hours numeric default 48, blik_phone text default ''
 );
+alter table gs_settings add column if not exists offer_valid_mode text default 'hours';
+alter table gs_settings add column if not exists offer_valid_value numeric default 48;
+alter table gs_settings add column if not exists offer_valid_date date;
 insert into gs_settings (id) values (1) on conflict (id) do nothing;
 
 create table if not exists gs_equipment (
