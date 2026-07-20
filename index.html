@@ -159,8 +159,9 @@ function computeCalc(f, equipment, settings, packages, clients, vouchers){
   let rentalBase, extraRental;
   if(f.rate_override!=null && f.rate_override!==''){ rentalBase = +f.rate_override; extraRental = 0; }
   else { rentalBase = daysRental(eq); extraRental = extraEquip.reduce((s,e)=>s+daysRental(e),0); }
-  const freeKm = +settings.free_km||0, kmRate = +settings.km_rate||0;
-  const billKm = Math.max(0, (+f.km||0) - freeKm);
+  const freeKm = (+settings.free_km||0) * 4, kmRate = +settings.km_rate||0;
+  const kmTotal = (+f.km||0) * 4;
+  const billKm = Math.max(0, kmTotal - freeKm);
   const transport = (f.transport_override!=null && f.transport_override!=='') ? +f.transport_override : billKm*kmRate;
   const addonsSum = (f.addon_ids||[]).reduce((s,id)=>{ const p=packages.find(x=>x.id===id); return s+(p?+p.price||0:0); },0);
   const customSum = (f.custom_items||[]).reduce((s,c)=>s+(+c.price||0),0);
@@ -177,7 +178,7 @@ function computeCalc(f, equipment, settings, packages, clients, vouchers){
   const voucherAmt = voucherUsable ? Math.min(+voucher.value||0, rentalAfterReferral+transport+addonsSum+customSum) : 0;
   const total = preVoucherTotal - voucherAmt;
   const offerCost = +f.offer_cost||0;
-  return { rental: rentalAfterReferral, extraEquip, discountAmt, discountPct, transport, addonsSum, customSum, deposit, zadatek: zad, total, billKm, voucher, voucherUsable, voucherAmt, offerCost, eq };
+  return { rental: rentalAfterReferral, extraEquip, discountAmt, discountPct, transport, addonsSum, customSum, deposit, zadatek: zad, total, billKm, kmTotal, voucher, voucherUsable, voucherAmt, offerCost, eq };
 }
 
 function computeExpiry(settings){
@@ -544,7 +545,7 @@ function OfferFormModal({onClose, initial, equipment, packages, tiers, clients, 
           <div className="field"><label>Ilość dób</label><input type="number" min="1" value={f.qty} onChange={e=>set("qty",+e.target.value||1)}/></div>
         </div>
         <div className="row2">
-          <div className="field"><label>Odległość od bazy (km)</label><input type="number" value={f.km} onChange={e=>set("km",+e.target.value||0)}/></div>
+          <div className="field"><label>Odległość od bazy (km, w 1 stronę)</label><input type="number" value={f.km} onChange={e=>set("km",+e.target.value||0)}/></div>
           <div className="field"><label>Status</label>
             <select value={f.status||"draft"} onChange={e=>set("status",e.target.value)}>
               <option value="draft">Robocza</option><option value="sent">Wysłana</option><option value="accepted">Zaakceptowana</option><option value="done">Zrealizowana</option>
@@ -590,7 +591,7 @@ function OfferFormModal({onClose, initial, equipment, packages, tiers, clients, 
         <div className="calc-box">
           <div className="calc-line"><span>Wynajem</span><span>{fmt(calc.rental)}</span></div>
           {calc.discountAmt>0 && <div className="calc-line" style={{color:"#9a6b00"}}><span>Rabat polecenia</span><span>-{fmt(calc.discountAmt)} ({calc.discountPct}%)</span></div>}
-          <div className="calc-line"><span>Transport ({calc.billKm} km płatne, {settings.free_km} km w cenie)</span><span>{fmt(calc.transport)}</span></div>
+          <div className="calc-line"><span>Transport ({f.km||0} km w 1 str. × 4 = {calc.kmTotal} km, {settings.free_km*4} km w cenie, {calc.billKm} płatne)</span><span>{fmt(calc.transport)}</span></div>
           <div className="calc-line"><span>Dodatki</span><span>{fmt(calc.addonsSum)}</span></div>
           {calc.voucherAmt>0 && <div className="calc-line" style={{color:"#9a6b00"}}><span>Voucher podarunkowy</span><span>-{fmt(calc.voucherAmt)}</span></div>}
           {calc.customSum!==0 && <div className="calc-line"><span>Uzgodnienia własne</span><span>{fmt(calc.customSum)}</span></div>}
@@ -1065,7 +1066,7 @@ function Ustawienia({settings,setSettings,equipment,setEquipment,packages,setPac
 
       <h3 style={{fontSize:12,color:"var(--muted)",textTransform:"uppercase",marginBottom:8}}>Transport</h3>
       <div className="card row2" style={{marginBottom:20}}>
-        <div><label>Darmowe km</label><input type="number" defaultValue={settings.free_km} onBlur={ev=>saveSettings({free_km:+ev.target.value||0})}/></div>
+        <div><label>Darmowe km (w 1 stronę)</label><input type="number" defaultValue={settings.free_km} onBlur={ev=>saveSettings({free_km:+ev.target.value||0})}/></div>
         <div><label>Zł / km powyżej</label><input type="number" defaultValue={settings.km_rate} onBlur={ev=>saveSettings({km_rate:+ev.target.value||0})}/></div>
       </div>
 
