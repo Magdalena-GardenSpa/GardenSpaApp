@@ -155,9 +155,10 @@ function computeCalc(f, equipment, settings, packages, clients, vouchers){
     return isW ? (+e.rate_day_weekend||+e.rate_day||0) : (+e.rate_day||0);
   };
   const extraEquip = (f.extra_equip_ids||[]).map(id=>equipment.find(e=>e.id===id)).filter(Boolean);
+  const daysRental = (e) => { const q=+f.qty||1; if(f.mode!=='day'||q<=1) return rateOf(e)*q; return rateOf(e) + (q-1)*(+e.rate_extra_day||+e.rate_day||0); };
   let rentalBase, extraRental;
   if(f.rate_override!=null && f.rate_override!==''){ rentalBase = +f.rate_override; extraRental = 0; }
-  else { rentalBase = rateOf(eq) * (+f.qty||1); extraRental = extraEquip.reduce((s,e)=>s+rateOf(e)*(+f.qty||1),0); }
+  else { rentalBase = daysRental(eq); extraRental = extraEquip.reduce((s,e)=>s+daysRental(e),0); }
   const freeKm = +settings.free_km||0, kmRate = +settings.km_rate||0;
   const billKm = Math.max(0, (+f.km||0) - freeKm);
   const transport = (f.transport_override!=null && f.transport_override!=='') ? +f.transport_override : billKm*kmRate;
@@ -977,6 +978,7 @@ function Ustawienia({settings,setSettings,equipment,setEquipment,packages,setPac
         <div className="row3" style={{marginBottom:8}}>
           <div><label>Doba (pon-czw)</label><input type="number" defaultValue={e.rate_day} onBlur={ev=>updEquip(e.id,{rate_day:+ev.target.value||0})}/></div>
           <div><label>Doba (pt-nd)</label><input type="number" defaultValue={e.rate_day_weekend} onBlur={ev=>updEquip(e.id,{rate_day_weekend:+ev.target.value||0})}/></div>
+          <div><label>Kolejna doba</label><input type="number" defaultValue={e.rate_extra_day} onBlur={ev=>updEquip(e.id,{rate_extra_day:+ev.target.value||0})}/></div>
           <div><label>Kaucja</label><input type="number" defaultValue={e.deposit} onBlur={ev=>updEquip(e.id,{deposit:+ev.target.value||0})}/></div>
         </div>
         <div className="row3">
@@ -1066,7 +1068,7 @@ insert into gs_settings (id) values (1) on conflict (id) do nothing;
 create table if not exists gs_equipment (
   id uuid primary key default gen_random_uuid(), created_at timestamptz default now(),
   name text, type text, shape text default 'square', capacity text,
-  rate_day numeric default 0, rate_day_weekend numeric default 0,
+  rate_day numeric default 0, rate_day_weekend numeric default 0, rate_extra_day numeric default 0,
   rate_weekend numeric default 0, rate_week numeric default 0,
   deposit numeric default 0, purchase_cost numeric default 0,
   color text default '#153826', status text default 'available'
@@ -1115,7 +1117,7 @@ create table if not exists gs_costs (
   name text, amount numeric default 0, period text default 'monthly'
 );
 
-alter table gs_settings enable row level security;
+alter table gs_equipment add column if not exists rate_extra_day numeric default 0;
 alter table gs_equipment enable row level security;
 alter table gs_packages enable row level security;
 alter table gs_tiers enable row level security;
