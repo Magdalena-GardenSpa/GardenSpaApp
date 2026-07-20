@@ -1,0 +1,1158 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>GardenSpa — Zarządzanie wynajmem</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.6/babel.min.js"></script>
+<style>
+  :root{
+    --green:#1b5e20; --green-d:#0f3d13; --green-l:#e8f3e9;
+    --bg:#f6f4ee; --card:#ffffff; --ink:#22302a; --muted:#6b7a72; --line:#e3e0d6;
+    --warn:#b3541e; --gold:#c9a227;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{background:#eef1ec}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--ink);-webkit-font-smoothing:antialiased}
+  h1,h2,h3,.brand{font-family:Georgia,"Times New Roman",serif;letter-spacing:.2px}
+  a{color:var(--green-d)}
+  a:hover{color:var(--green)}
+  .app{max-width:460px;margin:0 auto;min-height:100vh;background:var(--bg);display:flex;flex-direction:column;box-shadow:0 0 40px rgba(0,0,0,.08);position:relative}
+  .app-header{background:var(--green-d);color:#eaf3ea;padding:20px 18px 16px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:30}
+  .app-header img{width:36px;height:36px;border-radius:9px;object-fit:cover;border:2px solid rgba(255,255,255,.3)}
+  .app-header .brand{font-size:16px;color:#fff;line-height:1.15}
+  .app-header .brand small{display:block;font-size:11px;font-family:-apple-system,sans-serif;opacity:.8;font-weight:normal;letter-spacing:.3px;margin-top:1px}
+  .main{flex:1;padding:16px 16px 90px;width:100%}
+  nav.bottom{display:flex;border-top:1px solid var(--line);background:#fff;padding:7px 2px 14px;position:sticky;bottom:0;z-index:30}
+  nav.bottom button{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;border:0;background:none;color:var(--muted);cursor:pointer;font-size:9.5px;padding:6px 2px}
+  nav.bottom button .ic{font-size:18px}
+  nav.bottom button.active{color:var(--green-d);font-weight:700}
+  .topbar{margin-bottom:18px}
+  .topbar h1{font-size:20px;color:var(--green-d)}
+  .topbar p{color:var(--muted);font-size:12.5px;margin-top:2px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px;box-shadow:0 1px 3px rgba(40,50,40,.04)}
+  .grid{display:grid;gap:16px}
+  .stat{display:flex;flex-direction:column;gap:4px}
+  .stat .v{font-size:27px;font-weight:700;font-family:Georgia,serif;color:var(--green-d)}
+  .stat .l{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+  .btn{border:0;border-radius:9px;padding:10px 16px;font-size:14px;cursor:pointer;font-weight:600;display:inline-flex;align-items:center;gap:7px}
+  .btn.primary{background:var(--green);color:#fff}
+  .btn.primary:hover{background:var(--green-d)}
+  .btn.ghost{background:var(--green-l);color:var(--green-d)}
+  .btn.ghost:hover{background:#d9ebdb}
+  .btn.sm{padding:6px 11px;font-size:12.5px;border-radius:7px}
+  .btn.danger{background:#fbeaea;color:#b3261e}
+  .btn.gold{background:var(--gold);color:#fff}
+  table{width:100%;border-collapse:collapse}
+  th,td{text-align:left;padding:10px 9px;font-size:13px;border-bottom:1px solid var(--line)}
+  th{font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);font-weight:600}
+  tr:last-child td{border-bottom:0}
+  .badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;white-space:nowrap}
+  .b-green{background:var(--green-l);color:var(--green-d)}
+  .b-amber{background:#fdf0d9;color:#9a6b00}
+  .b-red{background:#fbeaea;color:#b3261e}
+  .b-blue{background:#e4eef8;color:#23618f}
+  .b-grey{background:#eee;color:#555}
+  label{display:block;font-size:12px;font-weight:600;color:var(--muted);margin:0 0 5px}
+  input,select,textarea{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:8px;font-size:14px;font-family:inherit;background:#fff;color:var(--ink)}
+  input:focus,select:focus,textarea:focus{outline:2px solid var(--green-l);border-color:var(--green)}
+  textarea{resize:vertical;min-height:64px}
+  .field{margin-bottom:14px}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+  .overlay{position:fixed;inset:0;background:rgba(20,30,22,.45);display:flex;align-items:flex-start;justify-content:center;padding:34px 14px;z-index:50;overflow-y:auto}
+  .modal{background:#fff;border-radius:16px;width:100%;max-width:640px;padding:24px;box-shadow:0 18px 50px rgba(0,0,0,.25)}
+  .modal h2{font-size:20px;color:var(--green-d);margin-bottom:16px}
+  .modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:18px;padding-top:16px;border-top:1px solid var(--line)}
+  .close-x{float:right;cursor:pointer;font-size:22px;color:var(--muted);border:0;background:none;line-height:1}
+  .banner{padding:12px 16px;border-radius:11px;margin-bottom:16px;font-size:13px;display:flex;gap:10px;align-items:flex-start}
+  .banner.err{background:#fbeaea;color:#8a2018;border:1px solid #f1c9c4}
+  .banner.ok{background:var(--green-l);color:var(--green-d);border:1px solid #cfe6d1}
+  .stars{color:var(--gold);letter-spacing:2px;font-size:15px}
+  .muted{color:var(--muted)}
+  .empty{text-align:center;color:var(--muted);padding:36px 10px;font-size:13.5px}
+  .calc-box{background:var(--green-l);border-radius:11px;padding:13px 15px;margin-top:6px}
+  .calc-line{display:flex;justify-content:space-between;font-size:13.5px;padding:3px 0}
+  .calc-total{display:flex;justify-content:space-between;font-size:17px;font-weight:700;color:var(--green-d);border-top:1px dashed #b8d4bb;margin-top:7px;padding-top:8px;font-family:Georgia,serif}
+  .chip{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer;background:#fff}
+  .chip.on{background:var(--green-l);border-color:var(--green);color:var(--green-d);font-weight:600}
+  .draft{font-size:12px;border:1px solid var(--line);border-radius:9px;padding:8px 10px;cursor:pointer;background:#faf9f5;margin-bottom:6px}
+  .draft:hover{background:#f1efe6}
+  .swatch{width:22px;height:22px;border-radius:50%;cursor:pointer;display:inline-block;border:1px solid var(--line)}
+  .swatch.sel{border:2px solid #1c231d}
+  .calcell{aspect-ratio:1;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:12px;box-sizing:border-box}
+  @media (max-width:480px){
+    .row2,.row3{grid-template-columns:1fr}
+    .scroll-x{overflow-x:auto}
+    table{min-width:480px}
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useMemo, useCallback } = React;
+
+/* ============ KONFIGURACJA SUPABASE ============
+   Jednorazowo uruchom SQL ze skryptu na końcu tego pliku (w komentarzu) w
+   Supabase → SQL Editor, żeby utworzyć potrzebne tabele. Podmień dane poniżej
+   swoim URL i kluczem "anon"/"publishable" z Project Settings → API.
+*/
+const SUPABASE_URL = "https://vgnkrgrmdauwzugskxsc.supabase.co";
+const SUPABASE_KEY = "sb_publishable_o_gCTwEbzh2WAen3toyM6A_ttk4i95B";
+const H = { "apikey": SUPABASE_KEY, "Authorization": "Bearer " + SUPABASE_KEY, "Content-Type": "application/json" };
+
+async function sbGet(table, query=""){
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${query}`, {headers:H});
+  if(!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+async function sbInsert(table, row){
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {method:"POST", headers:{...H,"Prefer":"return=representation"}, body:JSON.stringify(row)});
+  if(!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+async function sbUpdate(table, idCol, idVal, patch){
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${idCol}=eq.${idVal}`, {method:"PATCH", headers:{...H,"Prefer":"return=representation"}, body:JSON.stringify(patch)});
+  if(!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+async function sbDelete(table, idVal){
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${idVal}`, {method:"DELETE", headers:H});
+  if(!r.ok) throw new Error(await r.text());
+}
+
+const fmt = n => (Number(n)||0).toLocaleString("pl-PL",{maximumFractionDigits:0}) + " zł";
+const MONTHS = ['Styczeń','Luty','Marzec','Kwiecień','Maj','Czerwiec','Lipiec','Sierpień','Wrzesień','Październik','Listopad','Grudzień'];
+const WEEKDAYS = ['Pn','Wt','Śr','Cz','Pt','So','Nd'];
+const COLOR_SWATCHES = ['#153826','#3a6350','#c9a227','#8a5a3b','#5b4b8a','#2f6f8f','#a13d3d'];
+const LOGO = "https://ugc.production.linktr.ee/dce7fc8e-f896-412b-b1b8-4a47ce1d35e5_1000001073.jpeg";
+
+function referralCode(phone){ return 'GS'+String(phone||'').replace(/\D/g,'').slice(-4); }
+function waPhone(p){ const d=String(p||'').replace(/\D/g,''); return d.startsWith('48')?d:'48'+d; }
+function displayName(phone, name){ return name ? name : phone + ' (brak imienia)'; }
+function isVoucherExpired(v){ if(!v) return false; const today=new Date(); const u=new Date(v.valid_until); return u < today; }
+function isVoucherUsable(v){ return v && !v.redeemed && !isVoucherExpired(v); }
+function dateRangeLabel(o){
+  const start = new Date(o.year, o.month, o.day);
+  const days = o.days||1;
+  if(days<=1) return `${o.day}.${o.month+1}.${o.year}`;
+  const end = new Date(o.year, o.month, o.day + days - 1);
+  const sameMonth = start.getMonth()===end.getMonth() && start.getFullYear()===end.getFullYear();
+  if(sameMonth) return `${start.getDate()}-${end.getDate()}.${o.month+1}.${o.year}`;
+  return `${start.getDate()}.${start.getMonth()+1} - ${end.getDate()}.${end.getMonth()+1}.${end.getFullYear()}`;
+}
+
+function computeCalc(f, equipment, settings, packages, clients, vouchers){
+  const eq = equipment.find(e=>e.id===f.equipment_id) || equipment[0] || {};
+  const rateOf = (e) => {
+    if(f.mode==='weekend') return +e.rate_weekend||0;
+    if(f.mode==='week') return +e.rate_week||0;
+    const d = new Date(f.year, f.month, f.day).getDay();
+    const isW = d===5||d===6||d===0;
+    return isW ? (+e.rate_day_weekend||+e.rate_day||0) : (+e.rate_day||0);
+  };
+  const extraEquip = (f.extra_equip_ids||[]).map(id=>equipment.find(e=>e.id===id)).filter(Boolean);
+  let rentalBase, extraRental;
+  if(f.rate_override!=null && f.rate_override!==''){ rentalBase = +f.rate_override; extraRental = 0; }
+  else { rentalBase = rateOf(eq) * (+f.qty||1); extraRental = extraEquip.reduce((s,e)=>s+rateOf(e)*(+f.qty||1),0); }
+  const freeKm = +settings.free_km||0, kmRate = +settings.km_rate||0;
+  const billKm = Math.max(0, (+f.km||0) - freeKm);
+  const transport = (f.transport_override!=null && f.transport_override!=='') ? +f.transport_override : billKm*kmRate;
+  const addonsSum = (f.addon_ids||[]).reduce((s,id)=>{ const p=packages.find(x=>x.id===id); return s+(p?+p.price||0:0); },0);
+  const customSum = (f.custom_items||[]).reduce((s,c)=>s+(+c.price||0),0);
+  const depositAuto = (+eq.deposit||0) + extraEquip.reduce((s,e)=>s+(+e.deposit||0),0);
+  const deposit = (f.deposit_override!=null && f.deposit_override!=='') ? +f.deposit_override : depositAuto;
+  const zad = (f.zadatek_override!=null && f.zadatek_override!=='') ? +f.zadatek_override : (+settings.zadatek||0);
+  const client = clients.find(c=>c.phone===f.phone);
+  const discountPct = (client && client.referral_pct_pending) ? client.referral_pct_pending : 0;
+  const discountAmt = Math.round((rentalBase+extraRental) * discountPct / 100);
+  const rentalAfterReferral = rentalBase + extraRental - discountAmt;
+  const voucher = (vouchers||[]).find(v=>v.code === String(f.voucher_code||'').trim().toUpperCase());
+  const voucherUsable = isVoucherUsable(voucher);
+  const preVoucherTotal = rentalAfterReferral + transport + addonsSum + customSum + deposit;
+  const voucherAmt = voucherUsable ? Math.min(+voucher.value||0, rentalAfterReferral+transport+addonsSum+customSum) : 0;
+  const total = preVoucherTotal - voucherAmt;
+  const offerCost = +f.offer_cost||0;
+  return { rental: rentalAfterReferral, extraEquip, discountAmt, discountPct, transport, addonsSum, customSum, deposit, zadatek: zad, total, billKm, voucher, voucherUsable, voucherAmt, offerCost, eq };
+}
+
+function tierLabel(tiers, mode, qty){
+  const t = (tiers||[]).find(x=>x.mode===mode);
+  if(t && (mode!=='day' || qty===1)) return t.title;
+  if(mode==='day') return `${qty} doby relaksu`;
+  return 'Wynajem';
+}
+
+function reviewDraftOptions(name, city, equipName, equipType, addonNames, voucherUsed){
+  const who = name || 'Klient';
+  const miejsce = city ? ` (miejscowość: ${city})` : '';
+  const co = equipName || 'sprzęt';
+  const typSlowo = equipType==='sauna' ? 'sauny' : equipType==='balia' ? 'balii' : 'sprzętu';
+  const relaksSlowo = equipType==='sauna' ? 'porządne wygrzanie' : equipType==='balia' ? 'kąpiel pod chmurką' : 'relaks';
+  const extra = addonNames && addonNames.length ? ` Skorzystaliśmy też z: ${addonNames.join(', ')}.` : '';
+  const voucherLine = voucherUsed ? ' Korzystaliśmy z vouchera podarunkowego — świetny prezent, polecamy dla bliskich!' : '';
+  const pool = [
+    `${who}${miejsce} — polecam! Wynajęliśmy: ${co} od GardenSpa. Świetna organizacja, czysto i profesjonalnie.${extra}${voucherLine}`,
+    `GardenSpa${miejsce} — mobilny wynajem ${typSlowo}: ${co}. Strzał w dziesiątkę na ${relaksSlowo}, zdecydowanie polecam każdemu, kto szuka relaksu blisko domu.${extra}`,
+    `Szukaliśmy oferty${miejsce} i trafiliśmy na GardenSpa (${co}) — punktualność, czystość i mega klimat. Na pewno wrócimy!${voucherLine}`,
+    `${who} tutaj${miejsce} 🙂 Wszystko dowiezione na czas, ${co} w idealnym stanie. Super sposób na ${relaksSlowo} bez wyjazdu.${extra}`,
+    `Nie spodziewaliśmy się takiego komfortu${miejsce}! GardenSpa i ${co} — pełen profesjonalizm od pierwszego kontaktu do odbioru.${voucherLine}`,
+    `${co} od GardenSpa${miejsce} to była świetna decyzja — łatwa rezerwacja, miła obsługa, zero stresu.${extra} Chętnie polecimy znajomym.`,
+    `Jeśli szukacie ${typSlowo}${miejsce} — GardenSpa i ${co} zdały egzamin na piątkę. Wracamy przy pierwszej okazji.${voucherLine}`,
+  ];
+  return pool.map(t=>({t,r:Math.random()})).sort((a,b)=>a.r-b.r).map(x=>x.t).slice(0,3);
+}
+
+function offerMsg(o, name, settings, equipment, packages, tiers){
+  const eq = equipment.find(e=>e.id===o.equipment_id) || {};
+  const calc = computeCalc(o, equipment, settings, packages, [], []);
+  const addonNames = (o.addon_ids||[]).filter(id=>id!=='p1' && id!=='p7').map(id=>(packages.find(p=>p.id===id)||{}).name).filter(Boolean);
+  const greet = name ? `Dzień dobry ${name}!` : 'Dzień dobry!';
+  const tierData = (tiers||[]).find(t=>t.mode===o.mode) || {};
+  const tier = tierLabel(tiers, o.mode, o.qty);
+  let extras = tierData.perks || 'W prezencie od nas: pierwszy worek drewna na rozpalenie 🔥 i światełka na klimat ✨';
+  if(addonNames.length) extras += ', a do tego: ' + addonNames.join(', ');
+  let nudge = tierData.show_upsell && tierData.upsell_text ? ` ${tierData.upsell_text}` : '';
+  const extraNames = (calc.extraEquip||[]).map(e=>e.name);
+  const setLine = extraNames.length ? ` + zestaw z: ${extraNames.join(', ')}` : '';
+  const customNames = (o.custom_items||[]).filter(c=>c.label).map(c=>`${c.label} (${fmt(c.price)})`);
+  const customLine = customNames.length ? `\nDodatkowe ustalenia: ${customNames.join(', ')}.` : '';
+  const payableNow = calc.total - calc.deposit;
+  return `${greet} Oto Twoja oferta GardenSpa 🌿🛁\n${eq.name}${setLine} — ${tier}\n${extras}.${customLine}\nWynajem: ${fmt(payableNow)} (w tym zadatek ${fmt(calc.zadatek)} przy rezerwacji).\nDodatkowo kaucja zwrotna: ${fmt(calc.deposit)} płatna w dniu wynajmu.${nudge}\n💳 Zadatek szybko przez BLIK na numer: ${settings.blik_phone||''}.\n📅 Terminy znikają szybko — odpisz, żeby zarezerwować ten! Kod polecenia dla znajomych: ${referralCode(o.phone)} — ${settings.referral_pct||0}% zniżki dla Ciebie na kolejny wynajem.`;
+}
+
+/* ================= APP ================= */
+function App(){
+  const [tab,setTab]=useState("pulpit");
+  const [err,setErr]=useState(null);
+  const [msg,setMsg]=useState(null);
+  const [loading,setLoading]=useState(true);
+
+  const [settings,setSettings]=useState({free_km:60,km_rate:2,zadatek:200,referral_pct:15,offer_valid_hours:48,blik_phone:'',company_name:'GardenSpa'});
+  const [equipment,setEquipment]=useState([]);
+  const [packages,setPackages]=useState([]);
+  const [tiers,setTiers]=useState([]);
+  const [clients,setClients]=useState([]);
+  const [offers,setOffers]=useState([]);
+  const [vouchers,setVouchers]=useState([]);
+  const [reviews,setReviews]=useState([]);
+  const [costs,setCosts]=useState([]);
+
+  const flash = t => { setMsg(t); setTimeout(()=>setMsg(null),3000); };
+
+  const reload = useCallback(async ()=>{
+    setLoading(true); setErr(null);
+    try{
+      const results = await Promise.allSettled([
+        sbGet("gs_settings","id=eq.1"),
+        sbGet("gs_equipment","order=name"),
+        sbGet("gs_packages","order=name"),
+        sbGet("gs_tiers","order=mode"),
+        sbGet("gs_clients","order=created_at.desc"),
+        sbGet("gs_offers","order=created_at.desc"),
+        sbGet("gs_vouchers","order=created_at.desc"),
+        sbGet("gs_reviews","order=created_at.desc"),
+        sbGet("gs_costs","order=name"),
+      ]);
+      const [s,e,p,t,c,o,v,r,co] = results;
+      if(s.status==="fulfilled" && s.value[0]) setSettings(prev=>({...prev,...s.value[0]}));
+      if(e.status==="fulfilled") setEquipment(e.value);
+      if(p.status==="fulfilled") setPackages(p.value);
+      if(t.status==="fulfilled") setTiers(t.value);
+      if(c.status==="fulfilled") setClients(c.value);
+      if(o.status==="fulfilled") setOffers((o.value||[]).map(x=>({...x, addon_ids:x.addon_ids||[], extra_equip_ids:x.extra_equip_ids||[], custom_items:x.custom_items||[]})));
+      if(v.status==="fulfilled") setVouchers(v.value);
+      if(r.status==="fulfilled") setReviews(r.value);
+      if(co.status==="fulfilled") setCosts(co.value);
+      const failed = results.filter(x=>x.status==="rejected");
+      if(failed.length) setErr("Część tabel jeszcze nie istnieje w Supabase — uruchom SQL na dole pliku źródłowego (sekcja komentarza) w SQL Editor. Szczegóły: " + String(failed[0].reason && failed[0].reason.message||failed[0].reason).slice(0,200));
+    }catch(ex){ setErr(String(ex.message||ex)); }
+    setLoading(false);
+  },[]);
+
+  useEffect(()=>{ reload(); },[reload]);
+
+  const NAV = [
+    ["pulpit","🏠","Pulpit"],["kalendarz","📅","Kalendarz"],["klienci","📇","Klienci"],
+    ["oferty","📄","Oferty"],["opinie","⭐","Opinie"],["raport","📊","Raport"],["ustawienia","⚙️","Ustaw."],
+  ];
+
+  return (
+    <div className="app">
+      <div className="app-header">
+        <img src={settings.logo_url||LOGO} alt="logo"/>
+        <div className="brand">{settings.company_name||"GardenSpa"}<small>Wynajem balii i sauny</small></div>
+      </div>
+      <div className="main">
+        {err && <div className="banner err"><span>⚠️</span><div>{err}<div style={{marginTop:8}}><button className="btn ghost sm" onClick={reload}>Spróbuj ponownie</button></div></div></div>}
+        {msg && <div className="banner ok"><span>✅</span><div>{msg}</div></div>}
+        {loading ? <div className="empty">Ładowanie…</div> : (
+          <>
+            {tab==="pulpit" && <Pulpit {...{equipment,offers,clients,settings,setTab}}/>}
+            {tab==="kalendarz" && <Kalendarz {...{equipment,offers,clients}}/>}
+            {tab==="klienci" && <Klienci {...{clients,setClients,offers,equipment,settings,packages,tiers,vouchers,setOffers,flash,setErr,reload,setTab}}/>}
+            {tab==="oferty" && <Oferty {...{offers,setOffers,equipment,packages,tiers,clients,setClients,settings,vouchers,setVouchers,flash,setErr,reload}}/>}
+            {tab==="opinie" && <Opinie {...{reviews,setReviews,clients,offers,equipment,packages,vouchers,flash,setErr}}/>}
+            {tab==="raport" && <Raport {...{offers,equipment,settings,packages,clients,vouchers,costs}}/>}
+            {tab==="ustawienia" && <Ustawienia {...{settings,setSettings,equipment,setEquipment,packages,setPackages,tiers,setTiers,costs,setCosts,flash,setErr,reload}}/>}
+          </>
+        )}
+      </div>
+      <nav className="bottom">
+        {NAV.map(([k,ic,l])=>(
+          <button key={k} className={tab===k?"active":""} onClick={()=>setTab(k)}>
+            <span className="ic">{ic}</span>{l}
+          </button>
+        ))}
+      </nav>
+    </div>
+  );
+}
+
+/* ================= PULPIT ================= */
+function Pulpit({equipment,offers,clients,settings,setTab}){
+  const today = new Date();
+  const isToday = o => o.year===today.getFullYear() && o.month===today.getMonth() && o.day===today.getDate();
+  const todayOffers = offers.filter(o=>isToday(o) && o.status!=="draft");
+  const freeCount = equipment.filter(e=>e.status==="available").length;
+  const alerts = [];
+  offers.forEach(o=>{ if(isToday(o) && o.status!=="draft"){ const eq=equipment.find(e=>e.id===o.equipment_id);
+    const c = clients.find(c=>c.phone===o.phone);
+    alerts.push({icon:"🚚", text:`Dziś: ${eq?eq.name:"—"} → ${displayName(o.phone,(c&&c.name)||o.name)}`}); } });
+  if(!alerts.length) alerts.push({icon:"✓", text:"Brak dzisiejszych dostaw/odbiorów."});
+  const upcoming = offers.filter(o=>o.status!=="draft" && !isToday(o))
+    .sort((a,b)=>(a.year*10000+a.month*100+a.day)-(b.year*10000+b.month*100+b.day)).slice(0,4);
+  return (
+    <div>
+      <div className="topbar"><div><h1>Pulpit</h1><p>Wynajem balii i sauny</p></div></div>
+      <div className="grid row2" style={{marginBottom:16}}>
+        <div className="card stat"><div className="v">{todayOffers.length}</div><div className="l">Dziś dostawy/odbiory</div></div>
+        <div className="card stat"><div className="v">{freeCount}</div><div className="l">Wolny sprzęt dziś</div></div>
+      </div>
+      <div style={{display:"flex",gap:10,marginBottom:20,flexWrap:"wrap"}}>
+        <button className="btn primary" onClick={()=>setTab("oferty")}>+ Nowa oferta / kalkulator</button>
+        <button className="btn ghost" onClick={()=>setTab("kalendarz")}>Sprawdź dostępność</button>
+      </div>
+      <h3 style={{fontSize:12.5,color:"var(--muted)",textTransform:"uppercase",letterSpacing:.5,marginBottom:8}}>Wymaga uwagi</h3>
+      {alerts.map((a,i)=>(<div key={i} className="card" style={{display:"flex",gap:10,alignItems:"center",marginBottom:8,padding:"10px 14px"}}><span>{a.icon}</span><span>{a.text}</span></div>))}
+      <h3 style={{fontSize:12.5,color:"var(--muted)",textTransform:"uppercase",letterSpacing:.5,margin:"18px 0 8px"}}>Nadchodzące</h3>
+      {upcoming.length===0 && <div className="empty">Brak nadchodzących zleceń.</div>}
+      {upcoming.map(o=>{ const eq=equipment.find(e=>e.id===o.equipment_id); const c=clients.find(c=>c.phone===o.phone);
+        return (<div key={o.id} className="card" style={{display:"flex",justifyContent:"space-between",marginBottom:8,padding:"10px 14px"}}>
+          <span>{eq?eq.name:"—"} · {displayName(o.phone,(c&&c.name)||o.name)}</span><span className="muted">{o.day}.{o.month+1}</span></div>); })}
+    </div>
+  );
+}
+
+/* ================= KALENDARZ ================= */
+function Kalendarz({equipment,offers,clients}){
+  const now = new Date();
+  const [ym,setYm]=useState({y:now.getFullYear(),m:now.getMonth()});
+  const first = new Date(ym.y,ym.m,1); const last = new Date(ym.y,ym.m+1,0);
+  const startOffset = (first.getDay()+6)%7;
+  const booked = {};
+  offers.filter(o=>o.status!=="draft" && o.year===ym.y && o.month===ym.m).forEach(o=>{
+    const eq = equipment.find(e=>e.id===o.equipment_id);
+    for(let d=o.day; d<o.day+(o.days||1); d++) booked[d]={color:eq?eq.color||"#153826":"#153826", shape:eq?eq.shape||"square":"square"};
+  });
+  const cells=[]; for(let i=0;i<startOffset;i++) cells.push(null);
+  for(let d=1; d<=last.getDate(); d++) cells.push(d);
+  const monthOffers = offers.filter(o=>o.status!=="draft" && o.year===ym.y && o.month===ym.m);
+  return (
+    <div>
+      <div className="topbar"><div><h1>Kalendarz</h1><p>Dostępność sprzętu</p></div></div>
+      <div className="card">
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+          <button className="btn ghost sm" onClick={()=>{ const d=new Date(ym.y,ym.m-1,1); setYm({y:d.getFullYear(),m:d.getMonth()}); }}>‹</button>
+          <b style={{color:"var(--green-d)",fontFamily:"Georgia,serif"}}>{MONTHS[ym.m]} {ym.y}</b>
+          <button className="btn ghost sm" onClick={()=>{ const d=new Date(ym.y,ym.m+1,1); setYm({y:d.getFullYear(),m:d.getMonth()}); }}>›</button>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:4,marginBottom:4}}>
+          {WEEKDAYS.map(d=>(<div key={d} style={{fontSize:11,textAlign:"center",color:"var(--muted)",fontWeight:700}}>{d}</div>))}
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:4,marginBottom:14}}>
+          {cells.map((d,i)=>{
+            if(d==null) return <div key={i} className="calcell" style={{background:"#f8f7f1",border:"none"}}/>;
+            const dow=(startOffset+d-1)%7; const isWeekend=dow===5||dow===6;
+            const b=booked[d];
+            const radius = b ? (b.shape==='round'?'50%':b.shape==='cylinder'?'22%':'0px') : '8px';
+            return (<div key={i} className="calcell" style={{
+              background:b?b.color:(isWeekend?"#f4ecdc":"#fff"),
+              color:b?"#fff":"var(--ink)",
+              border:isWeekend?"1.5px solid #d8c68a":"1px solid var(--line)",
+              borderRadius:radius
+            }}>{d}</div>);
+          })}
+        </div>
+        <div style={{display:"flex",gap:14,flexWrap:"wrap",fontSize:11,color:"var(--muted)",marginBottom:16}}>
+          {equipment.map(e=>(<span key={e.id}><span style={{display:"inline-block",width:9,height:9,background:e.color||"#153826",
+            borderRadius:e.shape==='round'?'50%':e.shape==='cylinder'?'22%':2,marginRight:5}}/>{e.name}</span>))}
+        </div>
+        <h3 style={{fontSize:12,color:"var(--muted)",textTransform:"uppercase",marginBottom:8}}>Rezerwacje w tym miesiącu</h3>
+        {monthOffers.length===0 && <div className="empty">Brak rezerwacji.</div>}
+        {monthOffers.map(o=>{ const eq=equipment.find(e=>e.id===o.equipment_id); const c=clients.find(c=>c.phone===o.phone);
+          const calc = computeCalc(o,equipment,{free_km:60,km_rate:2,zadatek:200},[], clients, []);
+          return (<div key={o.id} style={{padding:"8px 0",borderBottom:"1px solid var(--line)",fontSize:13}}>
+            <b>{eq?eq.name:"—"}</b> · {displayName(o.phone,(c&&c.name)||o.name)} <span className="muted">— {dateRangeLabel(o)} · {fmt(calc.total)}</span></div>); })}
+      </div>
+    </div>
+  );
+}
+
+/* ================= KLIENCI ================= */
+function Klienci({clients,setClients,offers,equipment,settings,packages,tiers,vouchers,setOffers,flash,setErr,reload,setTab}){
+  const [search,setSearch]=useState("");
+  const [selPhone,setSelPhone]=useState(null);
+  const digits = search.replace(/\D/g,"");
+  const filtered = clients.filter(c=>!digits || c.phone.replace(/\D/g,"").includes(digits));
+  const showAddNew = digits.length>=6 && !clients.some(c=>c.phone.replace(/\D/g,"")===digits);
+  const sel = clients.find(c=>c.phone===selPhone);
+
+  const addClient = async ()=>{
+    try{ const ins = await sbInsert("gs_clients",{phone:search, name:"", city:"", referral_pct_pending:0});
+      setClients(p=>[ins[0],...p]); setSelPhone(search); setSearch(""); }
+    catch(ex){ setErr(String(ex.message||ex)); }
+  };
+  const updateClient = async (patch)=>{
+    try{ await sbUpdate("gs_clients","id",sel.id,patch); setClients(p=>p.map(c=>c.id===sel.id?{...c,...patch}:c)); }
+    catch(ex){ setErr(String(ex.message||ex)); }
+  };
+  const history = sel ? offers.filter(o=>o.phone===sel.phone) : [];
+
+  if(sel){
+    return (
+      <div>
+        <div className="topbar"><div><h1>Klienci</h1><p>Szczegóły klienta</p></div></div>
+        <button className="btn ghost sm" style={{marginBottom:14}} onClick={()=>setSelPhone(null)}>‹ Wszyscy klienci</button>
+        <div className="card" style={{marginBottom:16}}>
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}><b style={{fontSize:16}}>{displayName(sel.phone,sel.name)}</b></div>
+          <div className="muted" style={{marginBottom:4}}>{sel.phone}</div>
+          <div style={{fontSize:12,color:"var(--muted)",marginBottom:10}}>Kod polecenia: <b style={{color:"var(--green-d)"}}>{referralCode(sel.phone)}</b></div>
+          {sel.referral_pct_pending>0 && <div className="banner ok" style={{fontSize:12}}>🎁 Rabat do wykorzystania: {sel.referral_pct_pending}% na kolejny wynajem</div>}
+          <div className="row2">
+            <div className="field"><label>Imię i nazwisko (opcjonalne)</label><input defaultValue={sel.name||""} onBlur={e=>updateClient({name:e.target.value})}/></div>
+            <div className="field"><label>Miejscowość (opcjonalnie)</label><input defaultValue={sel.city||""} onBlur={e=>updateClient({city:e.target.value})}/></div>
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <button className="btn primary sm" onClick={()=>setTab("oferty")}>+ Nowa oferta</button>
+          </div>
+        </div>
+        <h3 style={{fontSize:12,color:"var(--muted)",textTransform:"uppercase",marginBottom:8}}>Historia</h3>
+        {history.length===0 && <div className="empty">Brak wcześniejszych zleceń.</div>}
+        {history.map(o=>{ const eq=equipment.find(e=>e.id===o.equipment_id);
+          const calc = computeCalc(o,equipment,settings,packages,clients,vouchers);
+          const stMap={draft:["Robocza","b-grey"],sent:["Wysłana","b-blue"],accepted:["Zaakceptowana","b-green"],done:["Zrealizowana","b-amber"]};
+          const st = stMap[o.status]||stMap.draft;
+          return (<div key={o.id} className="card" style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
+            <div><b>{eq?eq.name:"—"}</b><div className="muted" style={{fontSize:12}}>{dateRangeLabel(o)}</div></div>
+            <div style={{textAlign:"right"}}><span className={"badge "+st[1]}>{st[0]}</span><div style={{fontWeight:700}}>{fmt(calc.total)}</div></div>
+          </div>); })}
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="topbar"><div><h1>Klienci</h1><p>Szukaj po numerze telefonu</p></div></div>
+      <div className="field"><input placeholder="np. 600 111 222" value={search} onChange={e=>setSearch(e.target.value)}/></div>
+      {filtered.map(c=>(<div key={c.id} className="card" style={{display:"flex",justifyContent:"space-between",marginBottom:8,cursor:"pointer"}} onClick={()=>setSelPhone(c.phone)}>
+        <div><b>{displayName(c.phone,c.name)}</b><div className="muted" style={{fontSize:12}}>{c.phone}</div></div>
+        <span className="muted">{offers.filter(o=>o.phone===c.phone).length} zlec.</span>
+      </div>))}
+      {showAddNew && <button className="btn primary" onClick={addClient}>+ Dodaj nowy numer {search}</button>}
+      {!filtered.length && !showAddNew && <div className="empty">Wpisz numer, aby wyszukać lub dodać klienta.</div>}
+    </div>
+  );
+}
+
+/* ================= OFERTY ================= */
+function emptyForm(settings){
+  return { phone:"", name:"", equipment_id:"", mode:"day", qty:1, km:10, addon_ids:[], extra_equip_ids:[], custom_items:[],
+    rate_override:"", transport_override:"", zadatek_override:"", deposit_override:"", voucher_code:"", offer_cost:0,
+    year:new Date().getFullYear(), month:new Date().getMonth(), day:new Date().getDate(), days:1, status:"draft" };
+}
+
+function OfferFormModal({onClose, initial, equipment, packages, tiers, clients, settings, vouchers, onSave}){
+  const [f,setF]=useState(initial);
+  useEffect(()=>{ if(!f.equipment_id && equipment[0]) setF(p=>({...p,equipment_id:equipment[0].id})); },[equipment]);
+  const set=(k,v)=>setF(p=>({...p,[k]:v}));
+  const calc = computeCalc(f, equipment, settings, packages, clients, vouchers);
+  const eqSel = equipment.find(e=>e.id===f.equipment_id) || {};
+  const referrer = clients.find(c=>referralCode(c.phone)===String(f.referral_code||"").trim().toUpperCase() && c.phone!==f.phone);
+  const voucherHit = vouchers.find(v=>v.code===String(f.voucher_code||"").trim().toUpperCase());
+
+  const toggleAddon = id => set("addon_ids", f.addon_ids.includes(id) ? f.addon_ids.filter(x=>x!==id) : [...f.addon_ids,id]);
+  const toggleExtra = id => set("extra_equip_ids", f.extra_equip_ids.includes(id) ? f.extra_equip_ids.filter(x=>x!==id) : [...f.extra_equip_ids,id]);
+  const addCustom = () => set("custom_items",[...f.custom_items,{label:"",price:0}]);
+  const updCustom = (i,patch) => set("custom_items", f.custom_items.map((c,idx)=>idx===i?{...c,...patch}:c));
+  const delCustom = i => set("custom_items", f.custom_items.filter((_,idx)=>idx!==i));
+
+  const rate = (mode)=>{
+    if(mode==='weekend') return +eqSel.rate_weekend||0;
+    if(mode==='week') return +eqSel.rate_week||0;
+    const d=new Date(f.year,f.month,f.day).getDay(); const isW=d===5||d===6||d===0;
+    return isW ? (+eqSel.rate_day_weekend||+eqSel.rate_day||0) : (+eqSel.rate_day||0);
+  };
+
+  return (
+    <div className="overlay" onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
+      <div className="modal">
+        <button className="close-x" onClick={onClose}>×</button>
+        <h2>Nowa oferta / kalkulator</h2>
+        <div className="row2">
+          <div className="field"><label>Telefon</label><input value={f.phone} onChange={e=>set("phone",e.target.value)} placeholder="600 111 222"/></div>
+          <div className="field"><label>Imię i nazwisko (opcjonalne)</label><input value={f.name} onChange={e=>set("name",e.target.value)}/></div>
+        </div>
+        <div className="field"><label>Sprzęt</label>
+          <select value={f.equipment_id} onChange={e=>set("equipment_id",e.target.value)}>
+            {equipment.map(e=>(<option key={e.id} value={e.id}>{e.name}{e.capacity?" ("+e.capacity+")":""}</option>))}
+          </select>
+        </div>
+        <label>Wybierz wariant</label>
+        <div className="row3" style={{marginBottom:10}}>
+          {tiers.map(t=>{ const sel = f.mode===t.mode;
+            return (<div key={t.id} className="card" style={{cursor:"pointer",borderColor:sel?"var(--green)":"var(--line)",background:sel?"var(--green-l)":"#fff",padding:12}} onClick={()=>set("mode",t.mode)}>
+              <div style={{fontWeight:700,marginBottom:2}}>{t.emoji} {t.title}</div>
+              <div className="muted" style={{fontSize:11.5,marginBottom:4}}>{t.subtitle}</div>
+              <div style={{fontWeight:700,color:"var(--green-d)"}}>{fmt(rate(t.mode))}{t.mode==='day'?" / doba":""}</div>
+            </div>); })}
+        </div>
+        {(()=>{ const activeTier = tiers.find(t=>t.mode===f.mode); return activeTier && activeTier.show_upsell && activeTier.upsell_text ?
+          <div className="banner ok" style={{fontSize:12}}>💡 {activeTier.upsell_text}</div> : null; })()}
+        <div className="row2">
+          <div className="field"><label>Ilość dób</label><input type="number" min="1" value={f.qty} onChange={e=>set("qty",+e.target.value||1)}/></div>
+          <div className="field"><label>Odległość od bazy (km)</label><input type="number" value={f.km} onChange={e=>set("km",+e.target.value||0)}/></div>
+        </div>
+        {equipment.filter(e=>e.id!==f.equipment_id).length>0 && <>
+          <label>Zestaw — dołącz dodatkowy sprzęt</label>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:10}}>
+            {equipment.filter(e=>e.id!==f.equipment_id).map(e=>(
+              <span key={e.id} className={"chip"+(f.extra_equip_ids.includes(e.id)?" on":"")} onClick={()=>toggleExtra(e.id)}>{f.extra_equip_ids.includes(e.id)?"☑":"☐"} + {e.name}</span>
+            ))}
+          </div>
+        </>}
+        <label>Dodatki dla klimatu</label>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:10}}>
+          {packages.map(p=>(<span key={p.id} className={"chip"+(f.addon_ids.includes(p.id)?" on":"")} onClick={()=>toggleAddon(p.id)}>
+            {f.addon_ids.includes(p.id)?"☑":"☐"} {p.name} {p.price>0?"("+fmt(p.price)+")":"(gratis)"}</span>))}
+        </div>
+        <label>Dodatkowe uzgodnienia (własna pozycja)</label>
+        {f.custom_items.map((c,i)=>(<div key={i} style={{display:"flex",gap:6,marginBottom:6}}>
+          <input placeholder="np. montaż grilla" value={c.label} onChange={e=>updCustom(i,{label:e.target.value})}/>
+          <input type="number" placeholder="zł" style={{width:90}} value={c.price} onChange={e=>updCustom(i,{price:+e.target.value||0})}/>
+          <button className="btn danger sm" onClick={()=>delCustom(i)}>✕</button>
+        </div>))}
+        <button className="btn ghost sm" style={{marginBottom:14}} onClick={addCustom}>+ Dodaj własną pozycję</button>
+
+        <div className="field"><label>Koszt własny tego wynajmu (zł)</label>
+          <div className="muted" style={{fontSize:11,marginBottom:4}}>np. dodatkowe kosmetyki, czapeczki, rbh — koszt może się różnić przy każdym wynajmie</div>
+          <input type="number" value={f.offer_cost} onChange={e=>set("offer_cost",+e.target.value||0)}/></div>
+
+        <div className="field"><label>Kod vouchera podarunkowego (opcjonalnie)</label>
+          <input value={f.voucher_code} onChange={e=>set("voucher_code",e.target.value.toUpperCase())} placeholder="np. GSGIFT01"/>
+          {f.voucher_code && <div className="muted" style={{fontSize:11.5,marginTop:4}}>
+            {!voucherHit ? "✗ Nie znaleziono takiego vouchera." : voucherHit.redeemed ? "✗ Ten voucher został już wykorzystany." : isVoucherExpired(voucherHit) ? "✗ Ten voucher wygasł." : `✓ Voucher ważny — ${fmt(voucherHit.value)} do odjęcia.`}</div>}
+        </div>
+        <div className="field"><label>Kod polecenia znajomego (opcjonalnie)</label>
+          <input value={f.referral_code||""} onChange={e=>set("referral_code",e.target.value.toUpperCase())} placeholder="np. GS1222"/>
+          {f.referral_code && <div className="muted" style={{fontSize:11.5,marginTop:4}}>
+            {referrer ? `✓ Kod należy do ${displayName(referrer.phone,referrer.name)} — otrzyma ${settings.referral_pct}% na kolejny wynajem.` : "✗ Nie znaleziono takiego kodu."}</div>}
+        </div>
+
+        <div className="calc-box">
+          <div className="calc-line"><span>Wynajem</span><span>{fmt(calc.rental)}</span></div>
+          {calc.discountAmt>0 && <div className="calc-line" style={{color:"#9a6b00"}}><span>Rabat polecenia</span><span>-{fmt(calc.discountAmt)} ({calc.discountPct}%)</span></div>}
+          <div className="calc-line"><span>Transport ({calc.billKm} km płatne, {settings.free_km} km w cenie)</span><span>{fmt(calc.transport)}</span></div>
+          <div className="calc-line"><span>Dodatki</span><span>{fmt(calc.addonsSum)}</span></div>
+          {calc.voucherAmt>0 && <div className="calc-line" style={{color:"#9a6b00"}}><span>Voucher podarunkowy</span><span>-{fmt(calc.voucherAmt)}</span></div>}
+          {calc.customSum!==0 && <div className="calc-line"><span>Uzgodnienia własne</span><span>{fmt(calc.customSum)}</span></div>}
+          <div className="calc-line"><span>Zadatek (przy rezerwacji)</span><span>{fmt(calc.zadatek)}</span></div>
+          <div className="calc-line"><span>Kaucja (zwrotna, w dniu wynajmu)</span><span>{fmt(calc.deposit)}</span></div>
+          <div className="calc-total"><span>Wynajem (płatne teraz)</span><span>{fmt(calc.total-calc.deposit)}</span></div>
+          <div className="calc-line" style={{color:"#9a6b00",fontWeight:700}}><span>+ Kaucja (w dniu wynajmu)</span><span>{fmt(calc.deposit)}</span></div>
+          <div className="calc-total"><span>RAZEM</span><span>{fmt(calc.total)}</span></div>
+        </div>
+        <label style={{marginTop:12}}>Podgląd SMS</label>
+        <div className="card" style={{fontSize:12.5,whiteSpace:"pre-wrap",background:"#faf9f5"}}>{offerMsg(f,f.name,settings,equipment,packages,tiers)}</div>
+        <div className="modal-actions">
+          <button className="btn ghost" onClick={()=>onSave(f,"draft")}>Zapisz roboczą</button>
+          <button className="btn primary" onClick={()=>onSave(f,"draft_send")}>Zapisz i wyślij</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function OfferDetailModal({offer,onClose,equipment,packages,tiers,clients,settings,vouchers,onToggleZadatek}){
+  const eq = equipment.find(e=>e.id===offer.equipment_id);
+  const calc = computeCalc(offer,equipment,settings,packages,clients,vouchers);
+  const c = clients.find(c=>c.phone===offer.phone);
+  const addonNames = (offer.addon_ids||[]).map(id=>(packages.find(p=>p.id===id)||{}).name).filter(Boolean);
+  const customNames = (offer.custom_items||[]).filter(c=>c.label).map(c=>`${c.label} — ${fmt(c.price)}`);
+  const stMap={draft:["Robocza","b-grey"],sent:["Wysłana","b-blue"],accepted:["Zaakceptowana","b-green"],done:["Zrealizowana","b-amber"]};
+  const st = stMap[offer.status]||stMap.draft;
+  return (
+    <div className="overlay" onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
+      <div className="modal">
+        <button className="close-x" onClick={onClose}>×</button>
+        <h2>Szczegóły oferty</h2>
+        <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+          <b>{eq?eq.name:"—"}</b><span className={"badge "+st[1]}>{st[0]}</span>
+        </div>
+        <div className="muted" style={{fontSize:12,marginBottom:2}}>{displayName(offer.phone,(c&&c.name)||offer.name)} · {offer.phone}</div>
+        <div className="muted" style={{fontSize:12,marginBottom:12}}>Termin: {dateRangeLabel(offer)}</div>
+        {calc.extraEquip.length>0 && <div style={{fontSize:13,marginBottom:6}}>Zestaw: {calc.extraEquip.map(e=>e.name).join(", ")}</div>}
+        <div style={{fontSize:13,marginBottom:6}}>Dodatki: {addonNames.length?addonNames.join(", "):"brak"}</div>
+        {customNames.length>0 && <div style={{fontSize:13,marginBottom:6}}>Uzgodnienia własne: {customNames.join(", ")}</div>}
+        {offer.offer_cost>0 && <div style={{fontSize:13,marginBottom:10,color:"#b3261e"}}>Koszt własny tego wynajmu: {fmt(offer.offer_cost)}</div>}
+        <div className="calc-box">
+          <div className="calc-line"><span>Wynajem</span><span>{fmt(calc.rental)}</span></div>
+          {calc.discountAmt>0 && <div className="calc-line" style={{color:"#9a6b00"}}><span>Rabat polecenia</span><span>-{fmt(calc.discountAmt)} ({calc.discountPct}%)</span></div>}
+          {calc.voucherAmt>0 && <div className="calc-line" style={{color:"#9a6b00"}}><span>Voucher</span><span>-{fmt(calc.voucherAmt)}</span></div>}
+          <div className="calc-line"><span>Transport</span><span>{fmt(calc.transport)}</span></div>
+          <div className="calc-line"><span>Zadatek</span><span>{fmt(calc.zadatek)}</span></div>
+          <div className="calc-line"><span>Kaucja zwrotna (w dniu wynajmu)</span><span>{fmt(calc.deposit)}</span></div>
+          <div className="calc-total"><span>Wynajem (płatne teraz)</span><span>{fmt(calc.total-calc.deposit)}</span></div>
+          <div className="calc-line" style={{color:"#9a6b00",fontWeight:700}}><span>+ Kaucja (w dniu wynajmu)</span><span>{fmt(calc.deposit)}</span></div>
+          <div className="calc-total"><span>RAZEM</span><span>{fmt(calc.total)}</span></div>
+        </div>
+        <div className="card" style={{marginTop:12,cursor:"pointer",background:offer.zadatek_paid?"var(--green-l)":"#f6f4ee"}} onClick={()=>onToggleZadatek(offer)}>
+          <b style={{color:offer.zadatek_paid?"var(--green-d)":"var(--muted)"}}>{offer.zadatek_paid?"✅ Zadatek wpłacony":"⬜ Oznacz zadatek jako wpłacony"}</b>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,settings,vouchers,setVouchers,flash,setErr}){
+  const [modal,setModal]=useState(null); // 'new' or offer object for detail
+  const [view,setView]=useState("active"); // active | expired | done
+  const [voucherModal,setVoucherModal]=useState(false);
+
+  const isExpired = o => o.status==="sent" && o.expires_at && new Date(o.expires_at) < new Date();
+  const statusOrder = {sent:0,accepted:1,draft:2,done:3};
+  const rows = offers.filter(o=>{
+    if(view==="done") return o.status==="done";
+    if(view==="expired") return isExpired(o);
+    return o.status!=="done" && !isExpired(o);
+  }).slice().sort((a,b)=>(statusOrder[a.status]??9)-(statusOrder[b.status]??9));
+
+  const openShare = (o, kind) => {
+    const c = clients.find(c=>c.phone===o.phone);
+    const text = offerMsg(o,(c&&c.name)||o.name,settings,equipment,packages,tiers);
+    let url;
+    if(kind==="wa") url = `https://wa.me/${waPhone(o.phone)}?text=${encodeURIComponent(text)}`;
+    else if(kind==="sms") url = `sms:${o.phone.replace(/\s/g,"")}?body=${encodeURIComponent(text)}`;
+    else url = "https://m.me/";
+    window.open(url,"_blank");
+  };
+
+  const saveOffer = async (f, mode) => {
+    try{
+      if(!f.phone){ setErr("Podaj numer telefonu klienta."); return; }
+      const exists = clients.find(c=>c.phone===f.phone);
+      let clientRow = exists;
+      if(!exists){ const ins = await sbInsert("gs_clients",{phone:f.phone,name:f.name||"",city:"",referral_pct_pending:0}); clientRow=ins[0]; setClients(p=>[clientRow,...p]); }
+      else if(f.name && !exists.name){ await sbUpdate("gs_clients","id",exists.id,{name:f.name}); setClients(p=>p.map(c=>c.id===exists.id?{...c,name:f.name}:c)); }
+      // referral reward
+      if(f.referral_code){
+        const referrer = clients.find(c=>referralCode(c.phone)===String(f.referral_code).trim().toUpperCase() && c.phone!==f.phone);
+        if(referrer){ await sbUpdate("gs_clients","id",referrer.id,{referral_pct_pending:settings.referral_pct}); setClients(p=>p.map(c=>c.id===referrer.id?{...c,referral_pct_pending:settings.referral_pct}:c)); }
+      }
+      // consume own pending discount
+      if(exists && exists.referral_pct_pending){ await sbUpdate("gs_clients","id",exists.id,{referral_pct_pending:0}); setClients(p=>p.map(c=>c.id===exists.id?{...c,referral_pct_pending:0}:c)); }
+      // redeem voucher
+      if(f.voucher_code){
+        const v = vouchers.find(v=>v.code===String(f.voucher_code).trim().toUpperCase());
+        if(v && isVoucherUsable(v)){ await sbUpdate("gs_vouchers","id",v.id,{redeemed:true}); setVouchers(p=>p.map(x=>x.id===v.id?{...x,redeemed:true}:x)); }
+      }
+      const status = mode==="draft_send" ? "draft" : "draft";
+      const body = { phone:f.phone, name:f.name, equipment_id:f.equipment_id, mode:f.mode, qty:f.qty, km:f.km,
+        addon_ids:f.addon_ids, extra_equip_ids:f.extra_equip_ids, custom_items:f.custom_items,
+        rate_override: f.rate_override===""?null:+f.rate_override, transport_override: f.transport_override===""?null:+f.transport_override,
+        zadatek_override: f.zadatek_override===""?null:+f.zadatek_override, deposit_override: f.deposit_override===""?null:+f.deposit_override,
+        voucher_code:f.voucher_code, offer_cost:f.offer_cost, year:f.year, month:f.month, day:f.day, days:f.days||1,
+        status, expires_at: new Date(Date.now()+(settings.offer_valid_hours||48)*3600000).toISOString(), zadatek_paid:false };
+      const ins = await sbInsert("gs_offers",body);
+      const newOffer = {...ins[0], addon_ids:ins[0].addon_ids||[], extra_equip_ids:ins[0].extra_equip_ids||[], custom_items:ins[0].custom_items||[]};
+      setOffers(p=>[newOffer,...p]);
+      setModal(null);
+      if(mode==="draft_send") openShare(newOffer,"wa");
+      flash("Zapisano ofertę.");
+    }catch(ex){ setErr(String(ex.message||ex)); }
+  };
+
+  const advance = async (o) => {
+    const order=["draft","sent","accepted","done"]; const i=order.indexOf(o.status); if(i>=order.length-1) return;
+    const ns=order[i+1];
+    try{ await sbUpdate("gs_offers","id",o.id,{status:ns}); setOffers(p=>p.map(x=>x.id===o.id?{...x,status:ns}:x)); flash("Status: "+ns); }
+    catch(ex){ setErr(String(ex.message||ex)); }
+  };
+  const markSent = async (o) => {
+    try{ await sbUpdate("gs_offers","id",o.id,{status:"sent"}); setOffers(p=>p.map(x=>x.id===o.id?{...x,status:"sent"}:x)); }
+    catch(ex){ setErr(String(ex.message||ex)); }
+  };
+  const refreshExpiry = async (o) => {
+    try{ const exp=new Date(Date.now()+(settings.offer_valid_hours||48)*3600000).toISOString();
+      await sbUpdate("gs_offers","id",o.id,{expires_at:exp}); setOffers(p=>p.map(x=>x.id===o.id?{...x,expires_at:exp}:x)); flash("Odświeżono ważność oferty."); }
+    catch(ex){ setErr(String(ex.message||ex)); }
+  };
+  const toggleZadatek = async (o) => {
+    try{ await sbUpdate("gs_offers","id",o.id,{zadatek_paid:!o.zadatek_paid}); setOffers(p=>p.map(x=>x.id===o.id?{...x,zadatek_paid:!x.zadatek_paid}:x));
+      setModal(m=>m && m.id===o.id ? {...m,zadatek_paid:!m.zadatek_paid} : m); }
+    catch(ex){ setErr(String(ex.message||ex)); }
+  };
+
+  const expiredCount = offers.filter(isExpired).length;
+  const doneCount = offers.filter(o=>o.status==="done").length;
+
+  return (
+    <div>
+      <div className="topbar"><div><h1>Oferty</h1><p>Wyceny i wysyłka</p></div>
+        <div style={{display:"flex",gap:8}}>
+          <button className="btn primary" onClick={()=>setModal("new")}>+ Nowa oferta / przelicz cenę</button>
+          <button className="btn gold" onClick={()=>setVoucherModal(true)}>🎁 Wystaw voucher</button>
+        </div>
+      </div>
+      <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>
+        <button className={"btn sm "+(view==="active"?"primary":"ghost")} onClick={()=>setView("active")}>Aktywne</button>
+        <button className={"btn sm "+(view==="expired"?"primary":"ghost")} onClick={()=>setView("expired")}>⏳ Wygasłe ({expiredCount})</button>
+        <button className={"btn sm "+(view==="done"?"primary":"ghost")} onClick={()=>setView("done")}>📦 Zarchiwizowane ({doneCount})</button>
+      </div>
+      {rows.length===0 && <div className="empty">Brak ofert w tym widoku.</div>}
+      {rows.map(o=>{ const eq=equipment.find(e=>e.id===o.equipment_id); const c=clients.find(c=>c.phone===o.phone);
+        const calc = computeCalc(o,equipment,settings,packages,clients,vouchers);
+        const expired = isExpired(o);
+        const stMap={draft:["Robocza","b-grey","Wyślij"],sent:["Wysłana","b-blue","Akceptuj"],accepted:["Zaakceptowana","b-green","Zrealizowano"],done:["Zrealizowana","b-amber",null]};
+        const st = stMap[o.status]||stMap.draft;
+        const hoursLeft = o.expires_at ? Math.max(0,Math.round((new Date(o.expires_at)-new Date())/3600000)) : null;
+        return (<div key={o.id} className="card" style={{marginBottom:10,cursor:"pointer"}} onClick={()=>setModal(o)}>
+          <div style={{display:"flex",justifyContent:"space-between"}}>
+            <div><b>{eq?eq.name:"—"}</b><div className="muted" style={{fontSize:12}}>{displayName(o.phone,(c&&c.name)||o.name)} · {dateRangeLabel(o)}</div></div>
+            <span className={"badge "+(expired?"b-red":st[1])}>{expired?"Wygasła":st[0]}</span>
+          </div>
+          <div style={{fontWeight:700,color:"var(--green-d)",marginTop:6}}>{fmt(calc.total)}</div>
+          {o.status==="sent" && <div style={{fontSize:11,color:"#9a6b00",marginTop:3}}>⏳ {expired?"Oferta wygasła — odśwież warunki":`Ważna jeszcze ${hoursLeft} godz.`}</div>}
+          <div style={{display:"flex",gap:6,marginTop:9,flexWrap:"wrap"}} onClick={e=>e.stopPropagation()}>
+            <span className="chip" onClick={()=>openShare(o,"wa")}>🟢 WhatsApp</span>
+            <span className="chip" onClick={()=>openShare(o,"sms")}>💬 SMS</span>
+            <span className="chip" onClick={()=>openShare(o,"msg")}>📩 Messenger</span>
+            {st[2] && !expired && <span className="chip on" onClick={()=>{ if(o.status==="draft") markSent(o); else advance(o); }}>▸ {st[2]}</span>}
+            {expired && <span className="chip on" onClick={()=>refreshExpiry(o)}>🔄 Odśwież warunki</span>}
+          </div>
+        </div>); })}
+
+      {modal==="new" && <OfferFormModal onClose={()=>setModal(null)} initial={emptyForm(settings)} equipment={equipment} packages={packages} tiers={tiers} clients={clients} settings={settings} vouchers={vouchers} onSave={saveOffer}/>}
+      {modal && modal!=="new" && <OfferDetailModal offer={modal} onClose={()=>setModal(null)} equipment={equipment} packages={packages} tiers={tiers} clients={clients} settings={settings} vouchers={vouchers} onToggleZadatek={toggleZadatek}/>}
+      {voucherModal && <VoucherModal onClose={()=>setVoucherModal(false)} settings={settings} onSaved={(v)=>{ }} setErr={setErr} flash={flash} onCreated={(row)=>{ }} setVouchers={setVouchers}/>}
+    </div>
+  );
+}
+
+function VoucherModal({onClose,setErr,flash,setVouchers}){
+  const [f,setF]=useState({buyer_phone:"",buyer_name:"",recipient_note:"",value:150,valid_until:new Date(new Date().getFullYear()+1,11,31).toISOString().slice(0,10)});
+  const set=(k,v)=>setF(p=>({...p,[k]:v}));
+  const save = async ()=>{
+    if(!f.buyer_phone.trim()){ alert("Podaj telefon kupującego, aby utworzyć voucher."); return; }
+    try{
+      const code = "GSGIFT"+String(Date.now()).slice(-4);
+      const ins = await sbInsert("gs_vouchers",{code, buyer_phone:f.buyer_phone, buyer_name:f.buyer_name, recipient_note:f.recipient_note, value:f.value, valid_until:f.valid_until, redeemed:false});
+      setVouchers(p=>[ins[0],...p]); flash("Utworzono voucher "+code); onClose();
+    }catch(ex){ setErr(String(ex.message||ex)); }
+  };
+  return (
+    <div className="overlay" onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
+      <div className="modal">
+        <button className="close-x" onClick={onClose}>×</button>
+        <h2>🎁 Voucher podarunkowy</h2>
+        <div className="field"><label>Telefon kupującego</label><input value={f.buyer_phone} onChange={e=>set("buyer_phone",e.target.value)} placeholder="600 111 222"/></div>
+        <div className="field"><label>Imię kupującego (opcjonalne)</label><input value={f.buyer_name} onChange={e=>set("buyer_name",e.target.value)}/></div>
+        <div className="field"><label>Dla kogo / okazja (notatka)</label><input value={f.recipient_note} onChange={e=>set("recipient_note",e.target.value)} placeholder="np. na urodziny córki"/></div>
+        <div className="row2">
+          <div className="field"><label>Kwota (zł)</label><input type="number" value={f.value} onChange={e=>set("value",+e.target.value||0)}/></div>
+          <div className="field"><label>Ważny do</label><input type="date" value={f.valid_until} onChange={e=>set("valid_until",e.target.value)}/></div>
+        </div>
+        <div className="modal-actions"><button className="btn primary" onClick={save}>Utwórz voucher</button></div>
+      </div>
+    </div>
+  );
+}
+
+/* ================= OPINIE ================= */
+function ReviewModal({onClose,client,offers,equipment,packages,vouchers,settings,setReviews,flash,setErr}){
+  const lastOffer = client ? offers.filter(o=>o.phone===client.phone && o.status!=="draft").sort((a,b)=>(b.year*10000+b.month*100+b.day)-(a.year*10000+a.month*100+a.day))[0] : null;
+  const eq = lastOffer && equipment.find(e=>e.id===lastOffer.equipment_id);
+  const addonNames = lastOffer ? (lastOffer.addon_ids||[]).filter(id=>id!=="p1").map(id=>(packages.find(p=>p.id===id)||{}).name).filter(Boolean) : [];
+  const voucherUsed = lastOffer ? vouchers.some(v=>v.redeemed && v.buyer_phone===client.phone) : false;
+  const [phone,setPhone]=useState(client?client.phone:"");
+  const [text,setText]=useState(`Dzień dobry${client&&client.name?" "+client.name:""}! Dziękujemy za skorzystanie z GardenSpa${eq?" po wynajmie "+eq.name.toLowerCase():""}${client&&client.city?" w "+client.city:""} 🌿 Macie 5 sekund? Odpiszcie nam oceną 1-5 ⭐ i jednym zdaniem, co Wam się podobało — to dla nas naprawdę dużo znaczy!`);
+  const [stars,setStars]=useState(5);
+  const [reviewText,setReviewText]=useState("");
+  const drafts = useMemo(()=>reviewDraftOptions(client&&client.name, client&&client.city, eq&&eq.name, eq&&eq.type, addonNames, voucherUsed),[client]);
+
+  const send = kind => { const url = kind==="wa" ? `https://wa.me/${waPhone(phone)}?text=${encodeURIComponent(text)}` : `sms:${phone.replace(/\s/g,"")}?body=${encodeURIComponent(text)}`; window.open(url,"_blank"); };
+  const save = async ()=>{
+    if(!reviewText){ onClose(); return; }
+    try{ const ins = await sbInsert("gs_reviews",{phone, name:(client&&client.name)||"", stars, text:reviewText, web:false, fb:false, ig:false});
+      setReviews(p=>[ins[0],...p]); flash("Zapisano opinię."); onClose(); }
+    catch(ex){ setErr(String(ex.message||ex)); }
+  };
+
+  return (
+    <div className="overlay" onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
+      <div className="modal">
+        <button className="close-x" onClick={onClose}>×</button>
+        <h2>Poproś o opinię</h2>
+        <div className="field"><label>Telefon</label><input value={phone} onChange={e=>setPhone(e.target.value)} placeholder="600 111 222"/></div>
+        <div className="field"><label>Treść wiadomości</label><textarea value={text} onChange={e=>setText(e.target.value)}/></div>
+        <div style={{display:"flex",gap:8,marginBottom:16}}>
+          <button className="btn primary" onClick={()=>send("wa")}>🟢 WhatsApp</button>
+          <button className="btn ghost" onClick={()=>send("sms")}>💬 SMS</button>
+        </div>
+        <hr style={{border:"none",borderTop:"1px dashed var(--line)",margin:"14px 0"}}/>
+        <label>Wpisano opinię klienta — wybierz ocenę i szkic (1 dotknięcie, gotowe pod wyszukiwanie)</label>
+        {drafts.map((d,i)=>(<div key={i} className="draft" onClick={()=>setReviewText(d)}>{d}</div>))}
+        <div style={{display:"flex",gap:6,margin:"8px 0"}}>
+          {[1,2,3,4,5].map(n=>(<span key={n} style={{fontSize:20,cursor:"pointer",color:n<=stars?"var(--gold)":"#ddd"}} onClick={()=>setStars(n)}>★</span>))}
+        </div>
+        <textarea placeholder="Treść opinii klienta…" value={reviewText} onChange={e=>setReviewText(e.target.value)}/>
+        <div className="modal-actions"><button className="btn gold" onClick={save}>Zapisz opinię</button></div>
+      </div>
+    </div>
+  );
+}
+
+function Opinie({reviews,setReviews,clients,offers,equipment,packages,vouchers,flash,setErr}){
+  const [modal,setModal]=useState(null); // null | true (generic) | client object
+  const toggleChannel = async (r,ch) => {
+    try{ await sbUpdate("gs_reviews","id",r.id,{[ch]:!r[ch]}); setReviews(p=>p.map(x=>x.id===r.id?{...x,[ch]:!x[ch]}:x)); }
+    catch(ex){ setErr(String(ex.message||ex)); }
+  };
+  return (
+    <div>
+      <div className="topbar"><div><h1>Opinie</h1><p>Zbieramy i publikujemy</p></div>
+        <button className="btn primary" onClick={()=>setModal({})}>+ Poproś o opinię</button>
+      </div>
+      {reviews.length===0 && <div className="empty">Brak opinii jeszcze.</div>}
+      {reviews.map(r=>(<div key={r.id} className="card" style={{marginBottom:10}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <b>{displayName(r.phone,r.name)}</b><span className="stars">{"★".repeat(r.stars)}{"☆".repeat(5-r.stars)}</span>
+        </div>
+        <div style={{margin:"6px 0 9px"}}>{r.text}</div>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+          <span className={"chip"+(r.web?" on":"")} onClick={()=>toggleChannel(r,"web")}>Strona {r.web?"✓":""}</span>
+          <span className={"chip"+(r.fb?" on":"")} onClick={()=>toggleChannel(r,"fb")}>Facebook {r.fb?"✓":""}</span>
+          <span className={"chip"+(r.ig?" on":"")} onClick={()=>toggleChannel(r,"ig")}>Instagram {r.ig?"✓":""}</span>
+        </div>
+      </div>))}
+      {modal && <ReviewModal onClose={()=>setModal(null)} client={modal.phone?modal:null} offers={offers} equipment={equipment} packages={packages} vouchers={vouchers} settings={{}} setReviews={setReviews} flash={flash} setErr={setErr}/>}
+    </div>
+  );
+}
+
+/* ================= RAPORT ================= */
+function Raport({offers,equipment,settings,packages,clients,vouchers,costs}){
+  const [period,setPeriod]=useState("month");
+  const [showRoi,setShowRoi]=useState(false);
+  const monthlyCosts = costs.filter(c=>c.period==="monthly").reduce((s,c)=>s+(+c.amount||0),0);
+  const oneOffCosts = costs.filter(c=>c.period==="once").reduce((s,c)=>s+(+c.amount||0),0);
+  const totalInvestment = equipment.reduce((s,e)=>s+(+e.purchase_cost||0),0);
+  const netOf = (o,calc) => calc.total - calc.deposit - (+o.offer_cost||0);
+  const revenueForOffers = (list) => list.reduce((s,o)=>{ const calc = computeCalc(o,equipment,settings,packages,clients,vouchers); return s+netOf(o,calc); },0);
+  const realized = offers.filter(o=>o.status==="done"||o.status==="accepted");
+  const today = new Date();
+
+  const perEquipment = equipment.map(e=>{
+    const eqOffers = realized.filter(o=>o.equipment_id===e.id);
+    const revenue = revenueForOffers(eqOffers);
+    const roiPct = e.purchase_cost>0 ? Math.round((revenue/e.purchase_cost)*100) : 0;
+    return {name:e.name, revenue, count:eqOffers.length, roiPct, purchase_cost:e.purchase_cost||0};
+  }).sort((a,b)=>b.revenue-a.revenue);
+
+  const periodKey = o => period==="year" ? `${o.year}` : period==="quarter" ? `${o.year}-Q${Math.floor(o.month/3)+1}` : `${o.year}-${o.month}`;
+  const periodLabel = key => { if(period==="year") return key; if(period==="quarter"){ const [y,q]=key.split("-Q"); return `${q} kw. ${y}`; } const [y,m]=key.split("-").map(Number); return `${MONTHS[m]} ${y}`; };
+  const byPeriod={}; realized.forEach(o=>{ const k=periodKey(o); (byPeriod[k]=byPeriod[k]||[]).push(o); });
+  const periodSummary = Object.keys(byPeriod).sort().map(k=>{
+    const list=byPeriod[k]; const rev=revenueForOffers(list); const net=rev-monthlyCosts;
+    const byEq={}; list.forEach(o=>{ const calc=computeCalc(o,equipment,settings,packages,clients,vouchers); byEq[o.equipment_id]=(byEq[o.equipment_id]||0)+netOf(o,calc); });
+    let bestId=null,bestRev=-1; Object.entries(byEq).forEach(([id,r])=>{ if(r>bestRev){bestRev=r;bestId=id;} });
+    const bestEq = equipment.find(e=>e.id===bestId);
+    return {label:periodLabel(k), revenue:rev, net, count:list.length, bestName:bestEq?bestEq.name:"—", bestRev:bestRev>0?bestRev:0};
+  }).reverse();
+
+  const curKey = periodKey({year:today.getFullYear(),month:today.getMonth()});
+  const thisMonthRevenue = revenueForOffers(byPeriod[curKey]||[]);
+  const thisMonthNet = thisMonthRevenue - monthlyCosts;
+  const marginPct = thisMonthRevenue>0 ? Math.round((thisMonthNet/thisMonthRevenue)*100) : 0;
+  const allTimeRevenue = revenueForOffers(realized);
+  const allTimeCosts = monthlyCosts*Math.max(1,Object.keys(byPeriod).length||1) + oneOffCosts;
+  const allTimeNet = allTimeRevenue - allTimeCosts;
+  const roiPct = totalInvestment>0 ? Math.round((allTimeNet/totalInvestment)*100) : 0;
+
+  return (
+    <div>
+      <div className="topbar"><div><h1>Raport</h1><p>Przychody, koszty, ROI</p></div></div>
+      <div className="grid row2" style={{marginBottom:12}}>
+        <div className="card stat"><div className="v">{fmt(thisMonthRevenue)}</div><div className="l">Przychód (ten miesiąc)</div></div>
+        <div className="card stat"><div className="v" style={{color:"#b3261e"}}>{fmt(monthlyCosts)}</div><div className="l">Koszty (miesięcznie)</div></div>
+      </div>
+      <div className="grid row2" style={{marginBottom:16}}>
+        <div className="card stat"><div className="v" style={{color:thisMonthNet>=0?"var(--green-d)":"#b3261e"}}>{fmt(thisMonthNet)}</div><div className="l">Zysk netto (ten miesiąc)</div></div>
+        <div className="card stat"><div className="v">{marginPct}%</div><div className="l">Marża</div></div>
+      </div>
+      <h3 style={{fontSize:12,color:"var(--muted)",textTransform:"uppercase",marginBottom:8}}>ROI — zwrot z inwestycji w sprzęt</h3>
+      <div className="card" style={{marginBottom:10}}>
+        <div className="calc-line"><span>Inwestycja w sprzęt (łącznie)</span><span>{fmt(totalInvestment)}</span></div>
+        <div className="calc-line"><span>Przychód od początku</span><span>{fmt(allTimeRevenue)}</span></div>
+        <div className="calc-line"><span>Zysk netto od początku</span><span>{fmt(allTimeNet)}</span></div>
+        <div className="calc-total"><span>ROI</span><span>{roiPct}%</span></div>
+      </div>
+      <button className="btn ghost sm" style={{marginBottom:12}} onClick={()=>setShowRoi(v=>!v)}>{showRoi?"▾ Ukryj podział na sprzęt":"▸ Pokaż ROI per sprzęt"}</button>
+      {showRoi && perEquipment.map((e,i)=>(<div key={i} className="card" style={{marginBottom:8}}>
+        <div style={{display:"flex",justifyContent:"space-between",fontWeight:700,color:"var(--green-d)"}}><span>{e.name}</span><span>{e.roiPct}%</span></div>
+        <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"var(--muted)",marginTop:3}}><span>Przychód: {fmt(e.revenue)} · {e.count} zlec.</span><span>Inwestycja: {fmt(e.purchase_cost)}</span></div>
+      </div>))}
+      <h3 style={{fontSize:12,color:"var(--muted)",textTransform:"uppercase",margin:"18px 0 8px"}}>Podsumowanie okresowe</h3>
+      <div style={{display:"flex",gap:6,marginBottom:10}}>
+        {["month","quarter","year"].map(p=>(<button key={p} className={"btn sm "+(period===p?"primary":"ghost")} onClick={()=>setPeriod(p)}>{p==="month"?"Miesiąc":p==="quarter"?"Kwartał":"Rok"}</button>))}
+      </div>
+      {periodSummary.length===0 && <div className="empty">Brak zrealizowanych/zaakceptowanych zleceń do podsumowania.</div>}
+      {periodSummary.map((m,i)=>(<div key={i} className="card" style={{marginBottom:8}}>
+        <div style={{display:"flex",justifyContent:"space-between",fontWeight:700,color:"var(--green-d)"}}><span>{m.label}</span><span className="muted" style={{fontWeight:400}}>{m.count} zlec.</span></div>
+        <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginTop:3}}><span className="muted">Przychód: {fmt(m.revenue)}</span><span style={{color:m.net>=0?"var(--green-d)":"#b3261e",fontWeight:700}}>Netto: {fmt(m.net)}</span></div>
+        {m.bestRev>0 && <div style={{fontSize:11,color:"#9a6b00",marginTop:3}}>🏆 Najlepszy: {m.bestName} ({fmt(m.bestRev)})</div>}
+      </div>))}
+      <div className="muted" style={{fontSize:11,marginTop:10}}>Koszty edytujesz w Ustawienia → Koszty stałe. Koszt zakupu sprzętu edytujesz przy każdej pozycji w Ustawienia → Sprzęt.</div>
+    </div>
+  );
+}
+
+/* ================= USTAWIENIA ================= */
+function Ustawienia({settings,setSettings,equipment,setEquipment,packages,setPackages,tiers,setTiers,costs,setCosts,flash,setErr,reload}){
+  const saveSettings = async (patch) => {
+    try{ await sbUpdate("gs_settings","id",1,patch); setSettings(p=>({...p,...patch})); flash("Zapisano ustawienia."); }
+    catch(ex){ setErr(String(ex.message||ex)); }
+  };
+  const updEquip = async (id,patch) => { try{ await sbUpdate("gs_equipment","id",id,patch); setEquipment(p=>p.map(e=>e.id===id?{...e,...patch}:e)); }catch(ex){setErr(String(ex.message||ex));} };
+  const addEquip = async () => { try{ const ins = await sbInsert("gs_equipment",{name:"Nowy sprzęt",type:"balia",shape:"square",capacity:"",rate_day:250,rate_day_weekend:300,rate_weekend:400,rate_week:1200,deposit:200,purchase_cost:0,color:"#153826",status:"available"}); setEquipment(p=>[...p,ins[0]]); }catch(ex){setErr(String(ex.message||ex));} };
+  const delEquip = async (id) => { if(!confirm("Usunąć ten sprzęt?"))return; try{ await sbDelete("gs_equipment",id); setEquipment(p=>p.filter(e=>e.id!==id)); }catch(ex){setErr(String(ex.message||ex));} };
+
+  const updPkg = async (id,patch) => { try{ await sbUpdate("gs_packages","id",id,patch); setPackages(p=>p.map(x=>x.id===id?{...x,...patch}:x)); }catch(ex){setErr(String(ex.message||ex));} };
+  const addPkg = async () => { try{ const ins = await sbInsert("gs_packages",{name:"Nowy pakiet",price:0,note:""}); setPackages(p=>[...p,ins[0]]); }catch(ex){setErr(String(ex.message||ex));} };
+  const delPkg = async (id) => { try{ await sbDelete("gs_packages",id); setPackages(p=>p.filter(x=>x.id!==id)); }catch(ex){setErr(String(ex.message||ex));} };
+
+  const updTier = async (id,patch) => { try{ await sbUpdate("gs_tiers","id",id,patch); setTiers(p=>p.map(t=>t.id===id?{...t,...patch}:t)); }catch(ex){setErr(String(ex.message||ex));} };
+
+  const updCost = async (id,patch) => { try{ await sbUpdate("gs_costs","id",id,patch); setCosts(p=>p.map(c=>c.id===id?{...c,...patch}:c)); }catch(ex){setErr(String(ex.message||ex));} };
+  const addCost = async () => { try{ const ins = await sbInsert("gs_costs",{name:"Nowy koszt",amount:0,period:"monthly"}); setCosts(p=>[...p,ins[0]]); }catch(ex){setErr(String(ex.message||ex));} };
+  const delCost = async (id) => { try{ await sbDelete("gs_costs",id); setCosts(p=>p.filter(c=>c.id!==id)); }catch(ex){setErr(String(ex.message||ex));} };
+
+  return (
+    <div>
+      <div className="topbar"><div><h1>Ustawienia</h1><p>Sprzęt, pakiety, ceny</p></div></div>
+
+      <h3 style={{fontSize:12,color:"var(--muted)",textTransform:"uppercase",marginBottom:8}}>Sprzęt</h3>
+      {equipment.map(e=>(<div key={e.id} className="card" style={{marginBottom:10}}>
+        <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:8}}>
+          <input style={{fontWeight:700,flex:1}} defaultValue={e.name} onBlur={ev=>updEquip(e.id,{name:ev.target.value})}/>
+          <select defaultValue={e.status} onChange={ev=>updEquip(e.id,{status:ev.target.value})} style={{width:130}}>
+            <option value="available">Dostępny</option><option value="rented">Wynajęty</option><option value="service">Serwis</option>
+          </select>
+          <button className="btn danger sm" onClick={()=>delEquip(e.id)}>Usuń</button>
+        </div>
+        <div style={{display:"flex",gap:6,marginBottom:8}}>
+          {COLOR_SWATCHES.map(c=>(<span key={c} className={"swatch"+(e.color===c?" sel":"")} style={{background:c}} onClick={()=>updEquip(e.id,{color:c})}/>))}
+        </div>
+        <div className="row3" style={{marginBottom:8}}>
+          <div><label>Doba (pon-czw)</label><input type="number" defaultValue={e.rate_day} onBlur={ev=>updEquip(e.id,{rate_day:+ev.target.value||0})}/></div>
+          <div><label>Doba (pt-nd)</label><input type="number" defaultValue={e.rate_day_weekend} onBlur={ev=>updEquip(e.id,{rate_day_weekend:+ev.target.value||0})}/></div>
+          <div><label>Kaucja</label><input type="number" defaultValue={e.deposit} onBlur={ev=>updEquip(e.id,{deposit:+ev.target.value||0})}/></div>
+        </div>
+        <div className="row3">
+          <div><label>Pakiet weekendowy</label><input type="number" defaultValue={e.rate_weekend} onBlur={ev=>updEquip(e.id,{rate_weekend:+ev.target.value||0})}/></div>
+          <div><label>Pakiet tygodniowy</label><input type="number" defaultValue={e.rate_week} onBlur={ev=>updEquip(e.id,{rate_week:+ev.target.value||0})}/></div>
+          <div><label>Koszt zakupu</label><input type="number" defaultValue={e.purchase_cost} onBlur={ev=>updEquip(e.id,{purchase_cost:+ev.target.value||0})}/></div>
+        </div>
+      </div>))}
+      <button className="btn ghost" style={{marginBottom:20}} onClick={addEquip}>+ Dodaj sprzęt (np. druga sauna)</button>
+
+      <h3 style={{fontSize:12,color:"var(--muted)",textTransform:"uppercase",marginBottom:8}}>Pakiety / dodatki</h3>
+      {packages.map(p=>(<div key={p.id} className="card" style={{marginBottom:9}}>
+        <div style={{display:"flex",gap:8,marginBottom:6}}>
+          <input style={{fontWeight:700,flex:1}} defaultValue={p.name} onBlur={ev=>updPkg(p.id,{name:ev.target.value})}/>
+          <input type="number" style={{width:90}} defaultValue={p.price} onBlur={ev=>updPkg(p.id,{price:+ev.target.value||0})}/>
+        </div>
+        <div style={{display:"flex",gap:8}}>
+          <input placeholder="opis" style={{flex:1}} defaultValue={p.note} onBlur={ev=>updPkg(p.id,{note:ev.target.value})}/>
+          <button className="btn danger sm" onClick={()=>delPkg(p.id)}>Usuń</button>
+        </div>
+      </div>))}
+      <button className="btn ghost" style={{marginBottom:20}} onClick={addPkg}>+ Dodaj pakiet / dodatek</button>
+
+      <h3 style={{fontSize:12,color:"var(--muted)",textTransform:"uppercase",marginBottom:8}}>Warianty ofertowe</h3>
+      {tiers.map(t=>(<div key={t.id} className="card" style={{marginBottom:10}}>
+        <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:6}}>
+          <span>{t.emoji}</span><input style={{fontWeight:700,flex:1}} defaultValue={t.title} onBlur={ev=>updTier(t.id,{title:ev.target.value})}/>
+        </div>
+        <div className="field"><input placeholder="podtytuł" defaultValue={t.subtitle} onBlur={ev=>updTier(t.id,{subtitle:ev.target.value})}/></div>
+        <div className="field"><textarea placeholder="co zawiera" defaultValue={t.perks} onBlur={ev=>updTier(t.id,{perks:ev.target.value})}/></div>
+        <label style={{cursor:"pointer"}} onClick={()=>updTier(t.id,{show_upsell:!t.show_upsell})}>{t.show_upsell?"☑":"☐"} Pokaż podpowiedź / zachętę (upsell)</label>
+        {t.show_upsell && <textarea placeholder="treść zachęty" defaultValue={t.upsell_text} onBlur={ev=>updTier(t.id,{upsell_text:ev.target.value})}/>}
+      </div>))}
+
+      <h3 style={{fontSize:12,color:"var(--muted)",textTransform:"uppercase",margin:"20px 0 8px"}}>Koszty stałe (do raportu)</h3>
+      {costs.map(c=>(<div key={c.id} className="card" style={{marginBottom:9}}>
+        <div style={{display:"flex",gap:8,marginBottom:6}}>
+          <input style={{fontWeight:700,flex:1}} defaultValue={c.name} onBlur={ev=>updCost(c.id,{name:ev.target.value})}/>
+          <input type="number" style={{width:90}} defaultValue={c.amount} onBlur={ev=>updCost(c.id,{amount:+ev.target.value||0})}/>
+        </div>
+        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          <select defaultValue={c.period} onChange={ev=>updCost(c.id,{period:ev.target.value})}>
+            <option value="monthly">Miesięcznie</option><option value="once">Jednorazowo</option>
+          </select>
+          <button className="btn danger sm" onClick={()=>delCost(c.id)}>Usuń</button>
+        </div>
+      </div>))}
+      <button className="btn ghost" style={{marginBottom:20}} onClick={addCost}>+ Dodaj koszt</button>
+
+      <h3 style={{fontSize:12,color:"var(--muted)",textTransform:"uppercase",marginBottom:8}}>Transport</h3>
+      <div className="card row2" style={{marginBottom:20}}>
+        <div><label>Darmowe km</label><input type="number" defaultValue={settings.free_km} onBlur={ev=>saveSettings({free_km:+ev.target.value||0})}/></div>
+        <div><label>Zł / km powyżej</label><input type="number" defaultValue={settings.km_rate} onBlur={ev=>saveSettings({km_rate:+ev.target.value||0})}/></div>
+      </div>
+
+      <h3 style={{fontSize:12,color:"var(--muted)",textTransform:"uppercase",marginBottom:8}}>Płatności i polecenia</h3>
+      <div className="card">
+        <div className="row2" style={{marginBottom:8}}>
+          <div><label>Zadatek przy rezerwacji (zł)</label><input type="number" defaultValue={settings.zadatek} onBlur={ev=>saveSettings({zadatek:+ev.target.value||0})}/></div>
+          <div><label>Rabat za polecenie (%)</label><input type="number" defaultValue={settings.referral_pct} onBlur={ev=>saveSettings({referral_pct:+ev.target.value||0})}/></div>
+        </div>
+        <div className="field"><label>Ważność oferty (godz.)</label><input type="number" defaultValue={settings.offer_valid_hours} onBlur={ev=>saveSettings({offer_valid_hours:+ev.target.value||0})}/></div>
+        <div className="field"><label>Numer telefonu do BLIK (zadatek)</label><input defaultValue={settings.blik_phone} onBlur={ev=>saveSettings({blik_phone:ev.target.value})}/></div>
+        <div className="muted" style={{fontSize:11}}>Kaucja zwrotna ustawiasz osobno dla każdego sprzętu powyżej.</div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+
+<!--
+============================================================
+SQL DO URUCHOMIENIA RAZ W SUPABASE (SQL Editor) — kopiuj poniżej:
+============================================================
+
+create table if not exists gs_settings (
+  id int primary key default 1,
+  company_name text default 'GardenSpa', logo_url text,
+  free_km numeric default 60, km_rate numeric default 2,
+  zadatek numeric default 200, referral_pct numeric default 15,
+  offer_valid_hours numeric default 48, blik_phone text default ''
+);
+insert into gs_settings (id) values (1) on conflict (id) do nothing;
+
+create table if not exists gs_equipment (
+  id uuid primary key default gen_random_uuid(), created_at timestamptz default now(),
+  name text, type text, shape text default 'square', capacity text,
+  rate_day numeric default 0, rate_day_weekend numeric default 0,
+  rate_weekend numeric default 0, rate_week numeric default 0,
+  deposit numeric default 0, purchase_cost numeric default 0,
+  color text default '#153826', status text default 'available'
+);
+
+create table if not exists gs_packages (
+  id uuid primary key default gen_random_uuid(), created_at timestamptz default now(),
+  name text, price numeric default 0, note text
+);
+
+create table if not exists gs_tiers (
+  id uuid primary key default gen_random_uuid(),
+  mode text, emoji text, title text, subtitle text, perks text,
+  show_upsell boolean default false, upsell_text text
+);
+
+create table if not exists gs_clients (
+  id uuid primary key default gen_random_uuid(), created_at timestamptz default now(),
+  phone text unique, name text, city text, referral_pct_pending numeric default 0
+);
+
+create table if not exists gs_offers (
+  id uuid primary key default gen_random_uuid(), created_at timestamptz default now(),
+  phone text, name text, equipment_id uuid references gs_equipment(id),
+  mode text, qty numeric default 1, km numeric default 0,
+  addon_ids jsonb default '[]', extra_equip_ids jsonb default '[]', custom_items jsonb default '[]',
+  rate_override numeric, transport_override numeric, zadatek_override numeric, deposit_override numeric,
+  voucher_code text, offer_cost numeric default 0,
+  year int, month int, day int, days int default 1,
+  status text default 'draft', expires_at timestamptz, zadatek_paid boolean default false
+);
+
+create table if not exists gs_vouchers (
+  id uuid primary key default gen_random_uuid(), created_at timestamptz default now(),
+  code text unique, buyer_phone text, buyer_name text, recipient_note text,
+  value numeric default 0, valid_until date, redeemed boolean default false
+);
+
+create table if not exists gs_reviews (
+  id uuid primary key default gen_random_uuid(), created_at timestamptz default now(),
+  phone text, name text, stars int, text text, web boolean default false, fb boolean default false, ig boolean default false
+);
+
+create table if not exists gs_costs (
+  id uuid primary key default gen_random_uuid(),
+  name text, amount numeric default 0, period text default 'monthly'
+);
+
+alter table gs_settings enable row level security;
+alter table gs_equipment enable row level security;
+alter table gs_packages enable row level security;
+alter table gs_tiers enable row level security;
+alter table gs_clients enable row level security;
+alter table gs_offers enable row level security;
+alter table gs_vouchers enable row level security;
+alter table gs_reviews enable row level security;
+alter table gs_costs enable row level security;
+
+create policy "public rw settings" on gs_settings for all using (true) with check (true);
+create policy "public rw equipment" on gs_equipment for all using (true) with check (true);
+create policy "public rw packages" on gs_packages for all using (true) with check (true);
+create policy "public rw tiers" on gs_tiers for all using (true) with check (true);
+create policy "public rw clients" on gs_clients for all using (true) with check (true);
+create policy "public rw offers" on gs_offers for all using (true) with check (true);
+create policy "public rw vouchers" on gs_vouchers for all using (true) with check (true);
+create policy "public rw reviews" on gs_reviews for all using (true) with check (true);
+create policy "public rw costs" on gs_costs for all using (true) with check (true);
+
+insert into gs_equipment (name,type,shape,capacity,rate_day,rate_day_weekend,rate_weekend,rate_week,deposit,purchase_cost,color,status) values
+('Balia okrągła','balia','round','6-8 osób',250,300,400,1200,200,4500,'#153826','available'),
+('Balia kwadratowa premium','balia','square','8-10 osób',320,380,500,1500,250,6500,'#3a6350','available'),
+('Sauna','sauna','cylinder','6-8 osób',300,360,480,1400,300,8000,'#c9a227','available');
+
+insert into gs_packages (name,price,note) values
+('Pierwszy worek drewna','0','gratis przy pierwszym rozpaleniu'),
+('Kolejny worek drewna',40,'dokładka'),
+('Zestaw olejków do sauny',35,''),
+('Ręczniki frotté (kpl. 2)',20,''),
+('Voucher okolicznościowy',150,'urodziny / rocznica, do wręczenia'),
+('Przedłużacz / dostęp do prądu',0,'na miejscu, jeśli potrzebny'),
+('Światełka klimatyczne',0,'girlanda na wieczór');
+
+insert into gs_tiers (mode,emoji,title,subtitle,perks,show_upsell,upsell_text) values
+('day','🌙','Wieczór we dwoje','1 doba — idealny prezent na "tylko dla nas"','🎁 W prezencie: pierwszy worek drewna na rozpalenie + światełka na wyjątkowy klimat',true,'⏰ Zostań o dobę dłużej — dopłata mniejsza niż myślisz, a chwila relaksu dwa razy dłuższa.'),
+('weekend','🔥','Pełny weekend chillu','2-3 doby — wybór 7 na 10 naszych klientów','🎁 Gratis: pierwszy worek drewna, dodatkowe drewno w cenie, światełka na klimat i dostęp do prądu',true,'💚 Najlepszy stosunek ceny do relaksu — terminy weekendowe znikają najszybciej.'),
+('week','🏡','Tydzień jak na wczasach','7 dni — najniższa cena za dobę','🎁 Gratis: pierwszy worek drewna + 2 dodatkowe w cenie, światełka na klimat i komplet ręczników',true,'👑 Najkorzystniejsza oferta w cenniku — codzienny relaks w cenie urlopu.');
+
+insert into gs_costs (name,amount,period) values
+('Ubezpieczenie sprzętu',150,'monthly'),
+('Paliwo i transport',350,'monthly'),
+('Konserwacja i akcesoria',200,'monthly'),
+('Marketing / social media',100,'monthly');
+
+============================================================
+-->
+</body>
+</html>
