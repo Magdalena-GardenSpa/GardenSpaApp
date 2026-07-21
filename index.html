@@ -523,15 +523,15 @@ function OfferFormModal({onClose, initial, equipment, packages, tiers, clients, 
         <h2>{f.id?"Edytuj ofertę / rezerwację":"Nowa oferta / kalkulator"}</h2>
         {!f.id && <div style={{display:"flex",gap:8,marginBottom:14}}>
           <button type="button" className={"btn "+(quick?"ghost":"primary")+" sm"} onClick={()=>setQuick(false)}>Kalkulator</button>
-          <button type="button" className={"btn "+(quick?"primary":"ghost")+" sm"} onClick={()=>{setQuick(true); set("rate_override", f.rate_override ?? "");}}>⚡ Szybki wpis (stary wynajem)</button>
+          <button type="button" className={"btn "+(quick?"primary":"ghost")+" sm"} onClick={()=>{setQuick(true); set("rate_override", f.rate_override ?? "");}}>⚡ Szybki wpis (zrealizowany wynajem)</button>
         </div>}
         {quick && !f.id ? (
           <>
             <div className="row2">
-              <div className="field"><label>Telefon</label><input list="dl-phones" value={f.phone} onChange={e=>{const v=e.target.value; set("phone",v); const c=clients.find(x=>x.phone===v); if(c) setF(p=>({...p,phone:v,name:c.name||p.name}));}} placeholder="600 111 222"/>
+              <div className="field"><label>Telefon</label><input list="dl-phones" value={f.phone} onChange={e=>{const v=e.target.value; set("phone",v); const c=clients.find(x=>x.phone===v); if(c) setF(p=>({...p,phone:v,name:c.name||p.name,delivery_address:p.delivery_address||c.city||""}));}} placeholder="600 111 222"/>
                 <datalist id="dl-phones">{clients.map(c=><option key={c.id} value={c.phone}>{c.name}</option>)}</datalist>
               </div>
-              <div className="field"><label>Imię i nazwisko (opcjonalne)</label><input list="dl-names" value={f.name} onChange={e=>{const v=e.target.value; set("name",v); const c=clients.find(x=>x.name===v); if(c) setF(p=>({...p,name:v,phone:c.phone||p.phone}));}}/>
+              <div className="field"><label>Imię i nazwisko (opcjonalne)</label><input list="dl-names" value={f.name} onChange={e=>{const v=e.target.value; set("name",v); const c=clients.find(x=>x.name===v); if(c) setF(p=>({...p,name:v,phone:c.phone||p.phone,delivery_address:p.delivery_address||c.city||""}));}}/>
                 <datalist id="dl-names">{clients.filter(c=>c.name).map(c=><option key={c.id} value={c.name}>{c.phone}</option>)}</datalist>
               </div>
             </div>
@@ -541,13 +541,20 @@ function OfferFormModal({onClose, initial, equipment, packages, tiers, clients, 
               </select>
             </div>
             <div className="row2">
-              <div className="field"><label>Data</label><input type="date" value={`${f.year}-${String(f.month+1).padStart(2,'0')}-${String(f.day).padStart(2,'0')}`} onChange={e=>{ const [y,m,d]=e.target.value.split('-').map(Number); setF(p=>({...p,year:y,month:m-1,day:d})); }}/></div>
-              <div className="field"><label>Ilość dób</label><input type="number" min="1" value={f.qty} onChange={e=>set("qty",+e.target.value||1)}/></div>
+              <div className="field"><label>Od (data przyjazdu)</label><input type="date" value={`${f.year}-${String(f.month+1).padStart(2,'0')}-${String(f.day).padStart(2,'0')}`} onChange={e=>{ const [y,m,d]=e.target.value.split('-').map(Number); const start=new Date(y,m-1,d); const end=new Date(f.year,f.month,f.day+(f.days||f.qty||1)-1); const days=Math.max(1,Math.round((end-start)/86400000)+1); setF(p=>({...p,year:y,month:m-1,day:d,days,qty:days})); }}/></div>
+              <div className="field"><label>Do (data odbioru)</label><input type="date" value={(()=>{const d=new Date(f.year,f.month,f.day+(f.days||f.qty||1)-1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;})()} onChange={e=>{ const [y,m,d]=e.target.value.split('-').map(Number); const end=new Date(y,m-1,d); const start=new Date(f.year,f.month,f.day); const days=Math.max(1,Math.round((end-start)/86400000)+1); setF(p=>({...p,days,qty:days})); }}/></div>
             </div>
             <div className="row2">
               <div className="field"><label>Za ile (łącznie, zł)</label><input type="number" value={f.rate_override||""} onChange={e=>set("rate_override",e.target.value)} placeholder="np. 850"/></div>
               <div className="field"><label>Gdzie (miejscowość)</label><input value={f.delivery_address||""} onChange={e=>set("delivery_address",e.target.value)} placeholder="np. Oborniki"/></div>
             </div>
+            <div className="row2">
+              <div className="field"><label>Koszt własny (zł) — dla ROI/marży</label><input type="number" value={f.offer_cost} onChange={e=>set("offer_cost",+e.target.value||0)} placeholder="np. 50"/></div>
+              <div className="field"><label>Kaucja pobrana (zł)</label><input type="number" value={f.deposit_override||""} onChange={e=>set("deposit_override",e.target.value)} placeholder="np. 500"/></div>
+            </div>
+            <label style={{display:"flex",alignItems:"center",gap:8,marginTop:8,cursor:"pointer"}}>
+              <input type="checkbox" checked={!!f.deposit_returned} onChange={e=>set("deposit_returned",e.target.checked)}/> Kaucja zwrócona klientowi
+            </label>
           </>
         ) : (
         <>
@@ -671,6 +678,7 @@ function OfferDetailModal({offer,onClose,equipment,packages,tiers,clients,settin
           <b>{eq?eq.name:"—"}</b><span className={"badge "+st[1]}>{st[0]}</span>
         </div>
         {offer.delivery_address && <div className="muted" style={{fontSize:12.5,marginBottom:8}}>📍 {offer.delivery_address}</div>}
+        {offer.deposit_returned && <div className="muted" style={{fontSize:12.5,marginBottom:8,color:"var(--green-d)"}}>✅ Kaucja zwrócona</div>}
         <div className="muted" style={{fontSize:12,marginBottom:2}}>{displayName(offer.phone,(c&&c.name)||offer.name)} · {offer.phone}</div>
         <div className="muted" style={{fontSize:12,marginBottom:12}}>Termin: {dateRangeLabel(offer)}</div>
         {calc.extraEquip.length>0 && <div style={{fontSize:13,marginBottom:6}}>Zestaw: {calc.extraEquip.map(e=>e.name).join(", ")}</div>}
@@ -748,7 +756,7 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
         addon_ids:f.addon_ids, extra_equip_ids:f.extra_equip_ids, custom_items:f.custom_items,
         rate_override: f.rate_override===""?null:+f.rate_override, transport_override: f.transport_override===""?null:+f.transport_override,
         zadatek_override: f.zadatek_override===""?null:+f.zadatek_override, deposit_override: f.deposit_override===""?null:+f.deposit_override,
-        voucher_code:f.voucher_code, offer_cost:f.offer_cost, year:f.year, month:f.month, day:f.day, days:f.days||1, delivery_address:f.delivery_address||"" };
+        voucher_code:f.voucher_code, offer_cost:f.offer_cost, year:f.year, month:f.month, day:f.day, days:f.days||f.qty||1, delivery_address:f.delivery_address||"", deposit_returned:!!f.deposit_returned };
       if(f.id){
         await sbUpdate("gs_offers","id",f.id,{...body,status:f.status||"draft"});
         setOffers(p=>p.map(x=>x.id===f.id?{...x,...body,status:f.status||"draft"}:x));
@@ -1189,7 +1197,7 @@ create table if not exists gs_offers (
   mode text, qty numeric default 1, km numeric default 0,
   addon_ids jsonb default '[]', extra_equip_ids jsonb default '[]', custom_items jsonb default '[]',
   rate_override numeric, transport_override numeric, zadatek_override numeric, deposit_override numeric,
-  voucher_code text, offer_cost numeric default 0, delivery_address text default '',
+  voucher_code text, offer_cost numeric default 0, delivery_address text default '', deposit_returned boolean default false,
   year int, month int, day int, days int default 1,
   status text default 'draft', expires_at timestamptz, zadatek_paid boolean default false
 );
