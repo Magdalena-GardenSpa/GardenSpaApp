@@ -562,7 +562,7 @@ function OfferFormModal({onClose, initial, equipment, packages, tiers, clients, 
               <div className="field"><label>Do (data odbioru)</label><input type="date" value={(()=>{const d=new Date(f.year,f.month,f.day+(f.days||f.qty||1)-1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;})()} onChange={e=>{ const [y,m,d]=e.target.value.split('-').map(Number); const end=new Date(y,m-1,d); const start=new Date(f.year,f.month,f.day); const days=Math.max(1,Math.round((end-start)/86400000)+1); setF(p=>({...p,days,qty:days})); }}/></div>
             </div>
             <div className="row2">
-              <div className="field"><label>Za ile (łącznie, zł)</label><input type="number" value={f.rate_override||""} onChange={e=>set("rate_override",e.target.value)} placeholder={f.extra_equip_ids.length?"np. 950 (za cały zestaw)":"np. 850"}/></div>
+              <div className="field"><label>Za ile — wynajem, bez kaucji (zł)</label><input type="number" value={f.rate_override||""} onChange={e=>set("rate_override",e.target.value)} placeholder={f.extra_equip_ids.length?"np. 950 (za cały zestaw)":"np. 850"}/></div>
               <div className="field"><label>Gdzie (miejscowość)</label><input value={f.delivery_address||""} onChange={e=>set("delivery_address",e.target.value)} placeholder="np. Oborniki"/></div>
             </div>
             <div className="row2">
@@ -775,10 +775,14 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
         zadatek_override: f.zadatek_override===""?null:+f.zadatek_override, deposit_override: f.deposit_override===""?null:+f.deposit_override,
         voucher_code:f.voucher_code, offer_cost:f.offer_cost, year:f.year, month:f.month, day:f.day, days:f.days||f.qty||1, delivery_address:f.delivery_address||"", deposit_returned:!!f.deposit_returned };
       if(f.id){
-        await sbUpdate("gs_offers","id",f.id,{...body,status:f.status||"draft"});
-        setOffers(p=>p.map(x=>x.id===f.id?{...x,...body,status:f.status||"draft"}:x));
+        const newStatus = f.status||"draft";
+        const patch = {...body,status:newStatus};
+        if(newStatus==="done") patch.zadatek_paid = true;
+        await sbUpdate("gs_offers","id",f.id,patch);
+        setOffers(p=>p.map(x=>x.id===f.id?{...x,...patch}:x));
         setModal(null); setEditingOffer(null);
-        flash("Zaktualizowano ofertę.");
+        if(newStatus==="done") setView("done");
+        flash(newStatus==="done" ? "Oferta przeniesiona do zarchiwizowanych." : "Zaktualizowano ofertę.");
         return;
       }
       const year = f.year || new Date().getFullYear();
@@ -790,6 +794,7 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
       const newOffer = {...ins[0], addon_ids:ins[0].addon_ids||[], extra_equip_ids:ins[0].extra_equip_ids||[], custom_items:ins[0].custom_items||[]};
       setOffers(p=>[newOffer,...p]);
       setModal(null);
+      if(mode==="log_done") setView("done");
       if(mode==="draft_send") openShare(newOffer,"wa");
       flash("Zapisano ofertę.");
     }catch(ex){ setErr(String(ex.message||ex)); }
