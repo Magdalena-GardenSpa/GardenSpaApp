@@ -495,6 +495,7 @@ function emptyForm(settings){
 
 function OfferFormModal({onClose, initial, equipment, packages, tiers, clients, settings, vouchers, onSave}){
   const [f,setF]=useState(initial);
+  const [quick,setQuick]=useState(false);
   useEffect(()=>{ if(!f.equipment_id && equipment[0]) setF(p=>({...p,equipment_id:equipment[0].id})); },[equipment]);
   const set=(k,v)=>setF(p=>({...p,[k]:v}));
   const calc = computeCalc(f, equipment, settings, packages, clients, vouchers);
@@ -520,9 +521,43 @@ function OfferFormModal({onClose, initial, equipment, packages, tiers, clients, 
       <div className="modal">
         <button className="close-x" onClick={onClose}>×</button>
         <h2>{f.id?"Edytuj ofertę / rezerwację":"Nowa oferta / kalkulator"}</h2>
+        {!f.id && <div style={{display:"flex",gap:8,marginBottom:14}}>
+          <button type="button" className={"btn "+(quick?"ghost":"primary")+" sm"} onClick={()=>setQuick(false)}>Kalkulator</button>
+          <button type="button" className={"btn "+(quick?"primary":"ghost")+" sm"} onClick={()=>{setQuick(true); set("rate_override", f.rate_override ?? "");}}>⚡ Szybki wpis (stary wynajem)</button>
+        </div>}
+        {quick && !f.id ? (
+          <>
+            <div className="row2">
+              <div className="field"><label>Telefon</label><input list="dl-phones" value={f.phone} onChange={e=>{const v=e.target.value; set("phone",v); const c=clients.find(x=>x.phone===v); if(c) setF(p=>({...p,phone:v,name:c.name||p.name}));}} placeholder="600 111 222"/>
+                <datalist id="dl-phones">{clients.map(c=><option key={c.id} value={c.phone}>{c.name}</option>)}</datalist>
+              </div>
+              <div className="field"><label>Imię i nazwisko (opcjonalne)</label><input list="dl-names" value={f.name} onChange={e=>{const v=e.target.value; set("name",v); const c=clients.find(x=>x.name===v); if(c) setF(p=>({...p,name:v,phone:c.phone||p.phone}));}}/>
+                <datalist id="dl-names">{clients.filter(c=>c.name).map(c=><option key={c.id} value={c.name}>{c.phone}</option>)}</datalist>
+              </div>
+            </div>
+            <div className="field"><label>Sprzęt</label>
+              <select value={f.equipment_id} onChange={e=>set("equipment_id",e.target.value)}>
+                {equipment.map(e=>(<option key={e.id} value={e.id}>{e.name}{e.capacity?" ("+e.capacity+")":""}</option>))}
+              </select>
+            </div>
+            <div className="row2">
+              <div className="field"><label>Data</label><input type="date" value={`${f.year}-${String(f.month+1).padStart(2,'0')}-${String(f.day).padStart(2,'0')}`} onChange={e=>{ const [y,m,d]=e.target.value.split('-').map(Number); setF(p=>({...p,year:y,month:m-1,day:d})); }}/></div>
+              <div className="field"><label>Ilość dób</label><input type="number" min="1" value={f.qty} onChange={e=>set("qty",+e.target.value||1)}/></div>
+            </div>
+            <div className="row2">
+              <div className="field"><label>Za ile (łącznie, zł)</label><input type="number" value={f.rate_override||""} onChange={e=>set("rate_override",e.target.value)} placeholder="np. 850"/></div>
+              <div className="field"><label>Gdzie (miejscowość)</label><input value={f.delivery_address||""} onChange={e=>set("delivery_address",e.target.value)} placeholder="np. Oborniki"/></div>
+            </div>
+          </>
+        ) : (
+        <>
         <div className="row2">
-          <div className="field"><label>Telefon</label><input value={f.phone} onChange={e=>set("phone",e.target.value)} placeholder="600 111 222"/></div>
-          <div className="field"><label>Imię i nazwisko (opcjonalne)</label><input value={f.name} onChange={e=>set("name",e.target.value)}/></div>
+          <div className="field"><label>Telefon</label><input list="dl-phones" value={f.phone} onChange={e=>{const v=e.target.value; set("phone",v); const c=clients.find(x=>x.phone===v); if(c) setF(p=>({...p,phone:v,name:c.name||p.name}));}} placeholder="600 111 222"/>
+            <datalist id="dl-phones">{clients.map(c=><option key={c.id} value={c.phone}>{c.name}</option>)}</datalist>
+          </div>
+          <div className="field"><label>Imię i nazwisko (opcjonalne)</label><input list="dl-names" value={f.name} onChange={e=>{const v=e.target.value; set("name",v); const c=clients.find(x=>x.name===v); if(c) setF(p=>({...p,name:v,phone:c.phone||p.phone}));}}/>
+            <datalist id="dl-names">{clients.filter(c=>c.name).map(c=><option key={c.id} value={c.name}>{c.phone}</option>)}</datalist>
+          </div>
         </div>
         <div className="field"><label>Sprzęt</label>
           <select value={f.equipment_id} onChange={e=>set("equipment_id",e.target.value)}>
@@ -603,9 +638,14 @@ function OfferFormModal({onClose, initial, equipment, packages, tiers, clients, 
         </div>
         <label style={{marginTop:12}}>Podgląd SMS</label>
         <div className="card" style={{fontSize:12.5,whiteSpace:"pre-wrap",background:"#faf9f5"}}>{offerMsg(f,f.name,settings,equipment,packages,tiers)}</div>
+        </>
+        )}
         <div className="modal-actions">
-          {f.id ? <button className="btn primary" onClick={()=>onSave(f,"update")}>Zapisz zmiany</button> : <>
+          {f.id ? <button className="btn primary" onClick={()=>onSave(f,"update")}>Zapisz zmiany</button> : quick ? (
+            <button className="btn primary" onClick={()=>onSave(f,"log_done")}>✅ Zapisz jako zrealizowany</button>
+          ) : <>
             <button className="btn ghost" onClick={()=>onSave(f,"draft")}>Zapisz roboczą</button>
+            <button className="btn ghost" onClick={()=>onSave(f,"log_done")}>Zapisz jako zrealizowany (bez wysyłki)</button>
             <button className="btn primary" onClick={()=>onSave(f,"draft_send")}>Zapisz i wyślij</button>
           </>}
         </div>
@@ -626,10 +666,11 @@ function OfferDetailModal({offer,onClose,equipment,packages,tiers,clients,settin
     <div className="overlay" onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
       <div className="modal">
         <button className="close-x" onClick={onClose}>×</button>
-        <h2>Szczegóły oferty</h2>
+        <h2>Szczegóły oferty {offer.offer_no?`— ${offer.offer_no}`:""}</h2>
         <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
           <b>{eq?eq.name:"—"}</b><span className={"badge "+st[1]}>{st[0]}</span>
         </div>
+        {offer.delivery_address && <div className="muted" style={{fontSize:12.5,marginBottom:8}}>📍 {offer.delivery_address}</div>}
         <div className="muted" style={{fontSize:12,marginBottom:2}}>{displayName(offer.phone,(c&&c.name)||offer.name)} · {offer.phone}</div>
         <div className="muted" style={{fontSize:12,marginBottom:12}}>Termin: {dateRangeLabel(offer)}</div>
         {calc.extraEquip.length>0 && <div style={{fontSize:13,marginBottom:6}}>Zestaw: {calc.extraEquip.map(e=>e.name).join(", ")}</div>}
@@ -702,12 +743,12 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
         const v = vouchers.find(v=>v.code===String(f.voucher_code).trim().toUpperCase());
         if(v && isVoucherUsable(v)){ await sbUpdate("gs_vouchers","id",v.id,{redeemed:true}); setVouchers(p=>p.map(x=>x.id===v.id?{...x,redeemed:true}:x)); }
       }
-      const status = mode==="draft_send" ? "draft" : "draft";
+      const status = mode==="log_done" ? "done" : "draft";
       const body = { phone:f.phone, name:f.name, equipment_id:f.equipment_id, mode:f.mode, qty:f.qty, km:f.km,
         addon_ids:f.addon_ids, extra_equip_ids:f.extra_equip_ids, custom_items:f.custom_items,
         rate_override: f.rate_override===""?null:+f.rate_override, transport_override: f.transport_override===""?null:+f.transport_override,
         zadatek_override: f.zadatek_override===""?null:+f.zadatek_override, deposit_override: f.deposit_override===""?null:+f.deposit_override,
-        voucher_code:f.voucher_code, offer_cost:f.offer_cost, year:f.year, month:f.month, day:f.day, days:f.days||1 };
+        voucher_code:f.voucher_code, offer_cost:f.offer_cost, year:f.year, month:f.month, day:f.day, days:f.days||1, delivery_address:f.delivery_address||"" };
       if(f.id){
         await sbUpdate("gs_offers","id",f.id,{...body,status:f.status||"draft"});
         setOffers(p=>p.map(x=>x.id===f.id?{...x,...body,status:f.status||"draft"}:x));
@@ -715,7 +756,11 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
         flash("Zaktualizowano ofertę.");
         return;
       }
-      const insertBody = {...body, status, expires_at: computeExpiry(settings), zadatek_paid:false };
+      const year = f.year || new Date().getFullYear();
+      const sameYear = offers.filter(o=>o.offer_no && o.offer_no.startsWith(`OF/${year}/`));
+      const maxN = sameYear.reduce((m,o)=>Math.max(m, parseInt(o.offer_no.split('/')[2])||0), 0);
+      const offer_no = `OF/${year}/${String(maxN+1).padStart(4,'0')}`;
+      const insertBody = {...body, offer_no, status, expires_at: computeExpiry(settings), zadatek_paid: mode==="log_done"};
       const ins = await sbInsert("gs_offers",insertBody);
       const newOffer = {...ins[0], addon_ids:ins[0].addon_ids||[], extra_equip_ids:ins[0].extra_equip_ids||[], custom_items:ins[0].custom_items||[]};
       setOffers(p=>[newOffer,...p]);
@@ -1144,7 +1189,7 @@ create table if not exists gs_offers (
   mode text, qty numeric default 1, km numeric default 0,
   addon_ids jsonb default '[]', extra_equip_ids jsonb default '[]', custom_items jsonb default '[]',
   rate_override numeric, transport_override numeric, zadatek_override numeric, deposit_override numeric,
-  voucher_code text, offer_cost numeric default 0,
+  voucher_code text, offer_cost numeric default 0, delivery_address text default '',
   year int, month int, day int, days int default 1,
   status text default 'draft', expires_at timestamptz, zadatek_paid boolean default false
 );
