@@ -780,6 +780,7 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
   const [modal,setModal]=useState(null); // 'new' or offer object for detail
   const [editingOffer,setEditingOffer]=useState(null);
   const [view,setView]=useState("active"); // active | expired | done
+  const [showDeposit,setShowDeposit]=useState(false);
   const [voucherModal,setVoucherModal]=useState(false);
 
   const isExpired = o => o.status==="sent" && o.expires_at && new Date(o.expires_at) < new Date();
@@ -893,6 +894,9 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
         <button className={"btn sm "+(view==="expired"?"primary":"ghost")} onClick={()=>setView("expired")}>⏳ Wygasłe ({expiredCount})</button>
         <button className={"btn sm "+(view==="done"?"primary":"ghost")} onClick={()=>setView("done")}>📦 Zarchiwizowane ({doneCount})</button>
       </div>
+      <label style={{display:"flex",alignItems:"center",gap:8,marginBottom:12,fontSize:12.5,color:"var(--muted)",cursor:"pointer"}}>
+        <input type="checkbox" checked={showDeposit} onChange={e=>setShowDeposit(e.target.checked)}/> Pokaż kwoty razem z kaucją
+      </label>
       {rows.length===0 && <div className="empty">Brak ofert w tym widoku.</div>}
       {rows.map(o=>{ const eq=equipment.find(e=>e.id===o.equipment_id); const c=clients.find(c=>c.phone===o.phone);
         const calc = computeCalc(o,equipment,settings,packages,clients,vouchers);
@@ -902,10 +906,10 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
         const hoursLeft = o.expires_at ? Math.max(0,Math.round((new Date(o.expires_at)-new Date())/3600000)) : null;
         return (<div key={o.id} className="card" style={{marginBottom:10,cursor:"pointer"}} onClick={()=>setModal(o)}>
           <div style={{display:"flex",justifyContent:"space-between"}}>
-            <div><b>{eq?eq.name:"—"}</b><div className="muted" style={{fontSize:12}}>{displayName(o.phone,(c&&c.name)||o.name)} · {dateRangeLabel(o)}</div></div>
+            <div><b>{eq?eq.name:"—"}{calc.extraEquip.length>0?` + ${calc.extraEquip.map(e=>e.name).join(" + ")}`:""}</b><div className="muted" style={{fontSize:12}}>{displayName(o.phone,(c&&c.name)||o.name)} · {dateRangeLabel(o)}</div></div>
             <span className={"badge "+(expired?"b-red":st[1])}>{expired?"Wygasła":st[0]}</span>
           </div>
-          <div style={{fontWeight:700,color:"var(--green-d)",marginTop:6}}>{fmt(calc.total-calc.deposit)}</div>
+          <div style={{fontWeight:700,color:"var(--green-d)",marginTop:6}}>{fmt(showDeposit?calc.total:calc.total-calc.deposit)}</div>
           {o.status==="sent" && <div style={{fontSize:11,color:"#9a6b00",marginTop:3}}>⏳ {expired?"Oferta wygasła — odśwież warunki":`Ważna jeszcze ${hoursLeft} godz.`}</div>}
           <div style={{display:"flex",gap:6,marginTop:9,flexWrap:"wrap"}} onClick={e=>e.stopPropagation()}>
             <span className="chip" onClick={()=>openShare(o,"wa")}>🟢 WhatsApp</span>
