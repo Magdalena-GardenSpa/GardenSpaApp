@@ -451,8 +451,17 @@ function Klienci({clients,setClients,offers,equipment,settings,packages,tiers,vo
           <div style={{fontSize:12,color:"var(--muted)",marginBottom:10}}>Kod polecenia: <b style={{color:"var(--green-d)"}}>{referralCode(sel.phone)}</b></div>
           {sel.referral_pct_pending>0 && <div className="banner ok" style={{fontSize:12}}>🎁 Rabat do wykorzystania: {sel.referral_pct_pending}% na kolejny wynajem</div>}
           <div className="row2">
+            <div className="field"><label>Typ klienta</label>
+              <select defaultValue={sel.client_type||"private"} onChange={e=>updateClient({client_type:e.target.value})}>
+                <option value="private">Osoba fizyczna</option>
+                <option value="company">Firma</option>
+              </select>
+            </div>
             <div className="field"><label>Imię i nazwisko (opcjonalne)</label><input defaultValue={sel.name||""} onBlur={e=>updateClient({name:e.target.value})}/></div>
+          </div>
+          <div className="row2">
             <div className="field"><label>Miejscowość (opcjonalnie)</label><input defaultValue={sel.city||""} onBlur={e=>updateClient({city:e.target.value})}/></div>
+            {(sel.client_type||"private")==="company" && <div className="field"><label>NIP</label><input defaultValue={sel.nip||""} onBlur={e=>updateClient({nip:e.target.value})} placeholder="np. 123-456-32-18"/></div>}
           </div>
           <div style={{display:"flex",gap:8}}>
             <button className="btn primary sm" onClick={()=>setTab("oferty")}>+ Nowa oferta</button>
@@ -1188,7 +1197,8 @@ create table if not exists gs_tiers (
 
 create table if not exists gs_clients (
   id uuid primary key default gen_random_uuid(), created_at timestamptz default now(),
-  phone text unique, name text, city text, referral_pct_pending numeric default 0
+  phone text unique, name text, city text, referral_pct_pending numeric default 0,
+  client_type text default 'private', nip text
 );
 
 create table if not exists gs_offers (
