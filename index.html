@@ -852,6 +852,11 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
       flash("Zapisano ofertę.");
     }catch(ex){ setErr(String(ex.message||ex)); throw ex; }
   };
+  const delVoucher = async (v) => {
+    if(!confirm(`Usunąć voucher ${v.code}? Tej operacji nie można cofnąć.`)) return;
+    try{ await sbDelete("gs_vouchers",v.id); setVouchers(p=>p.filter(x=>x.id!==v.id)); flash("Usunięto voucher."); }
+    catch(ex){ setErr(String(ex.message||ex)); }
+  };
   const delOffer = async (o) => {
     if(!confirm("Usunąć tę ofertę/rezerwację? Tej operacji nie można cofnąć.")) return;
     try{ await sbDelete("gs_offers",o.id); setOffers(p=>p.filter(x=>x.id!==o.id)); setModal(null); flash("Usunięto ofertę."); }
@@ -914,6 +919,7 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
                 <span style={{color:"var(--green-d)",fontWeight:700}}>Marża: {fmt(margin)}</span>
               </div>
               <div className="muted" style={{fontSize:11.5,marginTop:4}}>Ważny do {v.valid_until}</div>
+              <button className="btn ghost sm" style={{marginTop:8,color:"#b3261e",borderColor:"#e3b3ab"}} onClick={()=>delVoucher(v)}>🗑 Usuń voucher</button>
             </div>); })}
         </>
       ) : <></>}
