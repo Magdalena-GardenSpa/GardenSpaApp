@@ -720,7 +720,7 @@ function OfferFormModal({onClose, initial, equipment, packages, tiers, clients, 
             <button className="btn primary" onClick={()=>doSave("log_done")}>✅ Zapisz jako zrealizowany</button>
           ) : <>
             <button className="btn ghost" onClick={()=>doSave("draft")}>Zapisz roboczą</button>
-            <button className="btn ghost" onClick={()=>doSave("log_done")}>Zapisz jako zrealizowany (bez wysyłki)</button>
+            <button className="btn ghost" onClick={()=>doSave("mark_accepted")}>Zapisz jako zaakceptowana</button>
             <button className="btn primary" onClick={()=>doSave("draft_send")}>Zapisz i wyślij</button>
           </>}
         </div>
@@ -786,6 +786,7 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
   const isExpired = o => o.status==="sent" && o.expires_at && new Date(o.expires_at) < new Date();
   const statusOrder = {sent:0,accepted:1,draft:2,done:3};
   const rows = offers.filter(o=>{
+    if(view==="vouchers") return false;
     if(view==="done") return o.status==="done";
     if(view==="expired") return isExpired(o);
     return o.status!=="done" && !isExpired(o);
@@ -820,7 +821,7 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
         const v = vouchers.find(v=>v.code===String(f.voucher_code).trim().toUpperCase());
         if(v && isVoucherUsable(v)){ await sbUpdate("gs_vouchers","id",v.id,{redeemed:true}); setVouchers(p=>p.map(x=>x.id===v.id?{...x,redeemed:true}:x)); }
       }
-      const status = mode==="log_done" ? "done" : "draft";
+      const status = mode==="log_done" ? "done" : mode==="mark_accepted" ? "accepted" : "draft";
       const body = { phone:f.phone, name:f.name, equipment_id:f.equipment_id, mode:f.mode, qty:f.qty, km:f.km,
         addon_ids:f.addon_ids, extra_equip_ids:f.extra_equip_ids, custom_items:f.custom_items,
         rate_override: f.rate_override===""?null:+f.rate_override, transport_override: f.transport_override===""?null:+f.transport_override,
@@ -841,7 +842,7 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
       const sameYear = offers.filter(o=>o.offer_no && o.offer_no.startsWith(`OF/${year}/`));
       const maxN = sameYear.reduce((m,o)=>Math.max(m, parseInt(o.offer_no.split('/')[2])||0), 0);
       const offer_no = `OF/${year}/${String(maxN+1).padStart(4,'0')}`;
-      const insertBody = {...body, offer_no, status, expires_at: computeExpiry(settings), zadatek_paid: mode==="log_done"};
+      const insertBody = {...body, offer_no, status, expires_at: computeExpiry(settings), zadatek_paid: mode==="log_done"||mode==="mark_accepted"};
       const ins = await sbInsert("gs_offers",insertBody);
       const newOffer = {...ins[0], addon_ids:ins[0].addon_ids||[], extra_equip_ids:ins[0].extra_equip_ids||[], custom_items:ins[0].custom_items||[]};
       setOffers(p=>[newOffer,...p]);
@@ -893,15 +894,37 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
         <button className={"btn sm "+(view==="active"?"primary":"ghost")} onClick={()=>setView("active")}>Aktywne</button>
         <button className={"btn sm "+(view==="expired"?"primary":"ghost")} onClick={()=>setView("expired")}>⏳ Wygasłe ({expiredCount})</button>
         <button className={"btn sm "+(view==="done"?"primary":"ghost")} onClick={()=>setView("done")}>📦 Zarchiwizowane ({doneCount})</button>
+        <button className={"btn sm "+(view==="vouchers"?"primary":"ghost")} onClick={()=>setView("vouchers")}>🎁 Vouchery ({vouchers.length})</button>
       </div>
+      {view==="vouchers" ? (
+        <>
+          {vouchers.length===0 && <div className="empty">Brak wystawionych voucherów.</div>}
+          {vouchers.slice().sort((a,b)=>new Date(b.created_at)-new Date(a.created_at)).map(v=>{
+            const expired = isVoucherExpired(v);
+            const buyer = clients.find(c=>c.phone===v.buyer_phone);
+            const margin = (+v.value||0) - (+v.cost||0);
+            return (<div key={v.id} className="card" style={{marginBottom:10}}>
+              <div style={{display:"flex",justifyContent:"space-between"}}>
+                <div><b>{v.code}</b><div className="muted" style={{fontSize:12}}>{displayName(v.buyer_phone,(buyer&&buyer.name)||v.buyer_name)}{v.recipient_note?" · "+v.recipient_note:""}</div></div>
+                <span className={"badge "+(v.redeemed?"b-grey":expired?"b-red":"b-green")}>{v.redeemed?"Wykorzystany":expired?"Wygasł":"Aktywny"}</span>
+              </div>
+              <div style={{display:"flex",gap:16,marginTop:8,fontSize:12.5}}>
+                <span>Wartość: <b>{fmt(v.value)}</b></span>
+                <span className="muted">Koszt: {fmt(v.cost||0)}</span>
+                <span style={{color:"var(--green-d)",fontWeight:700}}>Marża: {fmt(margin)}</span>
+              </div>
+              <div className="muted" style={{fontSize:11.5,marginTop:4}}>Ważny do {v.valid_until}</div>
+            </div>); })}
+        </>
+      ) : <></>}
       <button type="button" onClick={()=>setShowDeposit(v=>!v)} style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,padding:"12px 16px",marginBottom:12,borderRadius:11,border:"1px solid "+(showDeposit?"var(--green)":"var(--line)"),background:showDeposit?"var(--green-l)":"#fff",cursor:"pointer",fontSize:13.5,color:"var(--ink)",fontWeight:600}}>
         <span>💰 {showDeposit?"Kwoty razem z kaucją":"Kwoty bez kaucji"}</span>
         <span style={{width:38,height:22,borderRadius:11,background:showDeposit?"var(--green-d)":"#ccc",position:"relative",flexShrink:0,transition:"background .15s"}}>
           <span style={{position:"absolute",top:2,left:showDeposit?18:2,width:18,height:18,borderRadius:"50%",background:"#fff",transition:"left .15s"}}></span>
         </span>
       </button>
-      {rows.length===0 && <div className="empty">Brak ofert w tym widoku.</div>}
-      {rows.map(o=>{ const eq=equipment.find(e=>e.id===o.equipment_id); const c=clients.find(c=>c.phone===o.phone);
+      {view!=="vouchers" && rows.length===0 && <div className="empty">Brak ofert w tym widoku.</div>}
+      {view!=="vouchers" && rows.map(o=>{ const eq=equipment.find(e=>e.id===o.equipment_id); const c=clients.find(c=>c.phone===o.phone);
         const calc = computeCalc(o,equipment,settings,packages,clients,vouchers);
         const expired = isExpired(o);
         const stMap={draft:["Robocza","b-grey","Wyślij"],sent:["Wysłana","b-blue","Akceptuj"],accepted:["Zaakceptowana","b-green","Zrealizowano"],done:["Zrealizowana","b-amber",null]};
@@ -925,19 +948,19 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
 
       {(modal==="new"||editingOffer) && <OfferFormModal onClose={()=>{setModal(null);setEditingOffer(null);}} initial={editingOffer||emptyForm(settings)} equipment={equipment} packages={packages} tiers={tiers} clients={clients} settings={settings} vouchers={vouchers} onSave={saveOffer}/>}
       {modal && modal!=="new" && <OfferDetailModal offer={modal} onClose={()=>setModal(null)} equipment={equipment} packages={packages} tiers={tiers} clients={clients} settings={settings} vouchers={vouchers} onToggleZadatek={toggleZadatek} onEdit={()=>{setEditingOffer(modal);setModal(null);}} onDelete={()=>delOffer(modal)}/>}
-      {voucherModal && <VoucherModal onClose={()=>setVoucherModal(false)} settings={settings} onSaved={(v)=>{ }} setErr={setErr} flash={flash} onCreated={(row)=>{ }} setVouchers={setVouchers}/>}
+      {voucherModal && <VoucherModal onClose={()=>setVoucherModal(false)} settings={settings} clients={clients} setErr={setErr} flash={flash} setVouchers={setVouchers}/>}
     </div>
   );
 }
 
-function VoucherModal({onClose,setErr,flash,setVouchers}){
-  const [f,setF]=useState({buyer_phone:"",buyer_name:"",recipient_note:"",value:150,valid_until:new Date(new Date().getFullYear()+1,11,31).toISOString().slice(0,10)});
+function VoucherModal({onClose,setErr,flash,setVouchers,clients}){
+  const [f,setF]=useState({buyer_phone:"",buyer_name:"",recipient_note:"",value:150,cost:0,valid_until:new Date(new Date().getFullYear()+1,11,31).toISOString().slice(0,10)});
   const set=(k,v)=>setF(p=>({...p,[k]:v}));
   const save = async ()=>{
     if(!f.buyer_phone.trim()){ alert("Podaj telefon kupującego, aby utworzyć voucher."); return; }
     try{
       const code = "GSGIFT"+String(Date.now()).slice(-4);
-      const ins = await sbInsert("gs_vouchers",{code, buyer_phone:f.buyer_phone, buyer_name:f.buyer_name, recipient_note:f.recipient_note, value:f.value, valid_until:f.valid_until, redeemed:false});
+      const ins = await sbInsert("gs_vouchers",{code, buyer_phone:f.buyer_phone, buyer_name:f.buyer_name, recipient_note:f.recipient_note, value:f.value, cost:f.cost, valid_until:f.valid_until, redeemed:false});
       setVouchers(p=>[ins[0],...p]); flash("Utworzono voucher "+code); onClose();
     }catch(ex){ setErr(String(ex.message||ex)); }
   };
@@ -946,13 +969,22 @@ function VoucherModal({onClose,setErr,flash,setVouchers}){
       <div className="modal">
         <button className="close-x" onClick={onClose}>×</button>
         <h2>🎁 Voucher podarunkowy</h2>
-        <div className="field"><label>Telefon kupującego</label><input value={f.buyer_phone} onChange={e=>set("buyer_phone",e.target.value)} placeholder="600 111 222"/></div>
-        <div className="field"><label>Imię kupującego (opcjonalne)</label><input value={f.buyer_name} onChange={e=>set("buyer_name",e.target.value)}/></div>
+        <div className="row2">
+          <div className="field"><label>Telefon kupującego</label><input list="dl-v-phones" value={f.buyer_phone} onChange={e=>{const v=e.target.value; set("buyer_phone",v); const c=clients.find(x=>x.phone===v); if(c) setF(p=>({...p,buyer_phone:v,buyer_name:c.name||p.buyer_name}));}} placeholder="600 111 222"/>
+            <datalist id="dl-v-phones">{clients.map(c=><option key={c.id} value={c.phone}>{c.name}</option>)}</datalist>
+          </div>
+          <div className="field"><label>Imię kupującego (opcjonalne)</label><input list="dl-v-names" value={f.buyer_name} onChange={e=>{const v=e.target.value; set("buyer_name",v); const c=clients.find(x=>x.name===v); if(c) setF(p=>({...p,buyer_name:v,buyer_phone:c.phone||p.buyer_phone}));}}/>
+            <datalist id="dl-v-names">{clients.filter(c=>c.name).map(c=><option key={c.id} value={c.name}>{c.phone}</option>)}</datalist>
+          </div>
+        </div>
         <div className="field"><label>Dla kogo / okazja (notatka)</label><input value={f.recipient_note} onChange={e=>set("recipient_note",e.target.value)} placeholder="np. na urodziny córki"/></div>
         <div className="row2">
-          <div className="field"><label>Kwota (zł)</label><input type="number" value={f.value} onChange={e=>set("value",+e.target.value||0)}/></div>
+          <div className="field"><label>Kwota vouchera (zł)</label><input type="number" value={f.value} onChange={e=>set("value",+e.target.value||0)}/></div>
           <div className="field"><label>Ważny do</label><input type="date" value={f.valid_until} onChange={e=>set("valid_until",e.target.value)}/></div>
         </div>
+        <div className="field"><label>Koszt własny wystawienia (zł) — do marży</label>
+          <div className="muted" style={{fontSize:11,marginBottom:4}}>np. jeśli voucher sprzedany taniej niż realna wartość usługi</div>
+          <input type="number" value={f.cost} onChange={e=>set("cost",+e.target.value||0)}/></div>
         <div className="modal-actions"><button className="btn primary" onClick={save}>Utwórz voucher</button></div>
       </div>
     </div>
@@ -1285,7 +1317,7 @@ create table if not exists gs_offers (
 
 create table if not exists gs_vouchers (
   id uuid primary key default gen_random_uuid(), created_at timestamptz default now(),
-  code text unique, buyer_phone text, buyer_name text, recipient_note text,
+  cost numeric default 0, code text unique, buyer_phone text, buyer_name text, recipient_note text,
   value numeric default 0, valid_until date, redeemed boolean default false
 );
 
