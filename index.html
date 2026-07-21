@@ -334,8 +334,10 @@ function Pulpit({equipment,offers,clients,settings,setTab}){
     const c = clients.find(c=>c.phone===o.phone);
     alerts.push({icon:"🚚", text:`Dziś: ${eq?eq.name:"—"} → ${displayName(o.phone,(c&&c.name)||o.name)}`}); } });
   if(!alerts.length) alerts.push({icon:"✓", text:"Brak dzisiejszych dostaw/odbiorów."});
-  const upcoming = offers.filter(o=>o.status!=="draft" && !isToday(o))
-    .sort((a,b)=>(a.year*10000+a.month*100+a.day)-(b.year*10000+b.month*100+b.day)).slice(0,4);
+  const todayNum = today.getFullYear()*10000+today.getMonth()*100+today.getDate();
+  const dateNum = o => o.year*10000+o.month*100+o.day;
+  const upcoming = offers.filter(o=>o.status!=="draft" && !isToday(o) && dateNum(o)>todayNum)
+    .sort((a,b)=>dateNum(a)-dateNum(b)).slice(0,4);
   return (
     <div>
       <div className="topbar"><div><h1>Pulpit</h1><p>Wynajem balii i sauny</p></div></div>
@@ -415,7 +417,7 @@ function Kalendarz({equipment,offers,clients}){
         {monthOffers.map(o=>{ const eq=equipment.find(e=>e.id===o.equipment_id); const c=clients.find(c=>c.phone===o.phone);
           const calc = computeCalc(o,equipment,{free_km:60,km_rate:2,zadatek:200},[], clients, []);
           return (<div key={o.id} style={{padding:"8px 0",borderBottom:"1px solid var(--line)",fontSize:13}}>
-            <b>{eq?eq.name:"—"}</b> · {displayName(o.phone,(c&&c.name)||o.name)} <span className="muted">— {dateRangeLabel(o)} · {fmt(calc.total)}</span></div>); })}
+            <b>{eq?eq.name:"—"}</b> · {displayName(o.phone,(c&&c.name)||o.name)} <span className="muted">— {dateRangeLabel(o)} · {fmt(calc.total-calc.deposit)}</span></div>); })}
       </div>
     </div>
   );
@@ -476,7 +478,7 @@ function Klienci({clients,setClients,offers,equipment,settings,packages,tiers,vo
           const st = stMap[o.status]||stMap.draft;
           return (<div key={o.id} className="card" style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
             <div><b>{eq?eq.name:"—"}</b><div className="muted" style={{fontSize:12}}>{dateRangeLabel(o)}</div></div>
-            <div style={{textAlign:"right"}}><span className={"badge "+st[1]}>{st[0]}</span><div style={{fontWeight:700}}>{fmt(calc.total)}</div></div>
+            <div style={{textAlign:"right"}}><span className={"badge "+st[1]}>{st[0]}</span><div style={{fontWeight:700}}>{fmt(calc.total-calc.deposit)}</div></div>
           </div>); })}
       </div>
     );
@@ -580,6 +582,22 @@ function OfferFormModal({onClose, initial, equipment, packages, tiers, clients, 
             <label style={{display:"flex",alignItems:"center",gap:8,marginTop:8,cursor:"pointer"}}>
               <input type="checkbox" checked={!!f.deposit_returned} onChange={e=>set("deposit_returned",e.target.checked)}/> Kaucja zwrócona klientowi
             </label>
+            <div className="row2" style={{marginTop:10}}>
+              <div className="field"><label>Kod vouchera podarunkowego (opcjonalnie)</label>
+                <input value={f.voucher_code} onChange={e=>set("voucher_code",e.target.value.toUpperCase())} placeholder="np. GSGIFT01"/>
+                {f.voucher_code && <div className="muted" style={{fontSize:11.5,marginTop:4}}>
+                  {!voucherHit ? "✗ Nie znaleziono." : voucherHit.redeemed ? "✗ Wykorzystany." : isVoucherExpired(voucherHit) ? "✗ Wygasł." : `✓ Ważny — ${fmt(voucherHit.value)} do odjęcia.`}</div>}
+              </div>
+              <div className="field"><label>Kod polecenia znajomego (opcjonalnie)</label>
+                <input value={f.referral_code||""} onChange={e=>set("referral_code",e.target.value.toUpperCase())} placeholder="np. GS1222"/>
+                {f.referral_code && <div className="muted" style={{fontSize:11.5,marginTop:4}}>
+                  {referrer ? `✓ ${displayName(referrer.phone,referrer.name)} — ${settings.referral_pct}% rabatu.` : "✗ Nie znaleziono."}</div>}
+              </div>
+            </div>
+            {calc.discountPct>0 && <div className="banner ok" style={{fontSize:12}}>🎁 Klient ma rabat {calc.discountPct}% do wykorzystania na ten wynajem (-{fmt(calc.discountAmt)}).</div>}
+            <div className="calc-box">
+              <div className="calc-line"><span>Razem wynajem (z rabatami, bez kaucji)</span><span>{fmt(calc.total-calc.deposit)}</span></div>
+            </div>
           </>
         ) : (
         <>
@@ -863,7 +881,7 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
             <div><b>{eq?eq.name:"—"}</b><div className="muted" style={{fontSize:12}}>{displayName(o.phone,(c&&c.name)||o.name)} · {dateRangeLabel(o)}</div></div>
             <span className={"badge "+(expired?"b-red":st[1])}>{expired?"Wygasła":st[0]}</span>
           </div>
-          <div style={{fontWeight:700,color:"var(--green-d)",marginTop:6}}>{fmt(calc.total)}</div>
+          <div style={{fontWeight:700,color:"var(--green-d)",marginTop:6}}>{fmt(calc.total-calc.deposit)}</div>
           {o.status==="sent" && <div style={{fontSize:11,color:"#9a6b00",marginTop:3}}>⏳ {expired?"Oferta wygasła — odśwież warunki":`Ważna jeszcze ${hoursLeft} godz.`}</div>}
           <div style={{display:"flex",gap:6,marginTop:9,flexWrap:"wrap"}} onClick={e=>e.stopPropagation()}>
             <span className="chip" onClick={()=>openShare(o,"wa")}>🟢 WhatsApp</span>
