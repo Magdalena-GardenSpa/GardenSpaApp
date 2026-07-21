@@ -549,12 +549,20 @@ function OfferFormModal({onClose, initial, equipment, packages, tiers, clients, 
                 {equipment.map(e=>(<option key={e.id} value={e.id}>{e.name}{e.capacity?" ("+e.capacity+")":""}</option>))}
               </select>
             </div>
+            {equipment.filter(e=>e.id!==f.equipment_id).length>0 && <>
+              <label>Zestaw — dołącz dodatkowy sprzęt</label>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:10}}>
+                {equipment.filter(e=>e.id!==f.equipment_id).map(e=>(
+                  <span key={e.id} className={"chip"+(f.extra_equip_ids.includes(e.id)?" on":"")} onClick={()=>toggleExtra(e.id)}>{f.extra_equip_ids.includes(e.id)?"☑":"☐"} + {e.name}</span>
+                ))}
+              </div>
+            </>}
             <div className="row2">
               <div className="field"><label>Od (data przyjazdu)</label><input type="date" value={`${f.year}-${String(f.month+1).padStart(2,'0')}-${String(f.day).padStart(2,'0')}`} onChange={e=>{ const [y,m,d]=e.target.value.split('-').map(Number); const start=new Date(y,m-1,d); const end=new Date(f.year,f.month,f.day+(f.days||f.qty||1)-1); const days=Math.max(1,Math.round((end-start)/86400000)+1); setF(p=>({...p,year:y,month:m-1,day:d,days,qty:days})); }}/></div>
               <div className="field"><label>Do (data odbioru)</label><input type="date" value={(()=>{const d=new Date(f.year,f.month,f.day+(f.days||f.qty||1)-1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;})()} onChange={e=>{ const [y,m,d]=e.target.value.split('-').map(Number); const end=new Date(y,m-1,d); const start=new Date(f.year,f.month,f.day); const days=Math.max(1,Math.round((end-start)/86400000)+1); setF(p=>({...p,days,qty:days})); }}/></div>
             </div>
             <div className="row2">
-              <div className="field"><label>Za ile (łącznie, zł)</label><input type="number" value={f.rate_override||""} onChange={e=>set("rate_override",e.target.value)} placeholder="np. 850"/></div>
+              <div className="field"><label>Za ile (łącznie, zł)</label><input type="number" value={f.rate_override||""} onChange={e=>set("rate_override",e.target.value)} placeholder={f.extra_equip_ids.length?"np. 950 (za cały zestaw)":"np. 850"}/></div>
               <div className="field"><label>Gdzie (miejscowość)</label><input value={f.delivery_address||""} onChange={e=>set("delivery_address",e.target.value)} placeholder="np. Oborniki"/></div>
             </div>
             <div className="row2">
