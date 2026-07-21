@@ -505,8 +505,15 @@ function emptyForm(settings){
 function OfferFormModal({onClose, initial, equipment, packages, tiers, clients, settings, vouchers, onSave}){
   const [f,setF]=useState(initial);
   const [quick,setQuick]=useState(false);
+  const [localErr,setLocalErr]=useState("");
   useEffect(()=>{ if(!f.equipment_id && equipment[0]) setF(p=>({...p,equipment_id:equipment[0].id})); },[equipment]);
   const set=(k,v)=>setF(p=>({...p,[k]:v}));
+  const doSave = async (mode) => {
+    if(!f.phone || !f.phone.trim()){ setLocalErr("Podaj numer telefonu klienta (pole na górze formularza)."); return; }
+    setLocalErr("");
+    try{ await onSave(f, mode); }
+    catch(ex){ setLocalErr(String(ex.message||ex)); }
+  };
   const calc = computeCalc(f, equipment, settings, packages, clients, vouchers);
   const eqSel = equipment.find(e=>e.id===f.equipment_id) || {};
   const referrer = clients.find(c=>referralCode(c.phone)===String(f.referral_code||"").trim().toUpperCase() && c.phone!==f.phone);
@@ -665,12 +672,13 @@ function OfferFormModal({onClose, initial, equipment, packages, tiers, clients, 
         </>
         )}
         <div className="modal-actions">
-          {f.id ? <button className="btn primary" onClick={()=>onSave(f,"update")}>Zapisz zmiany</button> : quick ? (
-            <button className="btn primary" onClick={()=>onSave(f,"log_done")}>✅ Zapisz jako zrealizowany</button>
+          {localErr && <div className="banner err" style={{width:"100%",marginBottom:0}}><span>⚠️</span><div>{localErr}</div></div>}
+          {f.id ? <button className="btn primary" onClick={()=>doSave("update")}>Zapisz zmiany</button> : quick ? (
+            <button className="btn primary" onClick={()=>doSave("log_done")}>✅ Zapisz jako zrealizowany</button>
           ) : <>
-            <button className="btn ghost" onClick={()=>onSave(f,"draft")}>Zapisz roboczą</button>
-            <button className="btn ghost" onClick={()=>onSave(f,"log_done")}>Zapisz jako zrealizowany (bez wysyłki)</button>
-            <button className="btn primary" onClick={()=>onSave(f,"draft_send")}>Zapisz i wyślij</button>
+            <button className="btn ghost" onClick={()=>doSave("draft")}>Zapisz roboczą</button>
+            <button className="btn ghost" onClick={()=>doSave("log_done")}>Zapisz jako zrealizowany (bez wysyłki)</button>
+            <button className="btn primary" onClick={()=>doSave("draft_send")}>Zapisz i wyślij</button>
           </>}
         </div>
       </div>
@@ -797,7 +805,7 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
       if(mode==="log_done") setView("done");
       if(mode==="draft_send") openShare(newOffer,"wa");
       flash("Zapisano ofertę.");
-    }catch(ex){ setErr(String(ex.message||ex)); }
+    }catch(ex){ setErr(String(ex.message||ex)); throw ex; }
   };
   const delOffer = async (o) => {
     if(!confirm("Usunąć tę ofertę/rezerwację? Tej operacji nie można cofnąć.")) return;
