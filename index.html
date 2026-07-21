@@ -501,7 +501,7 @@ function Klienci({clients,setClients,offers,equipment,settings,packages,tiers,vo
 /* ================= OFERTY ================= */
 function emptyForm(settings){
   return { phone:"", name:"", equipment_id:"", mode:"day", qty:1, km:10, addon_ids:[], extra_equip_ids:[], custom_items:[],
-    rate_override:"", transport_override:"", zadatek_override:"", deposit_override:"", voucher_code:"", offer_cost:0,
+    rate_override:"", transport_override:"", zadatek_override:"", deposit_override:"", voucher_code:"", offer_cost:0, set_prices:{},
     year:new Date().getFullYear(), month:new Date().getMonth(), day:new Date().getDate(), days:1, status:"draft" };
 }
 
@@ -572,9 +572,24 @@ function OfferFormModal({onClose, initial, equipment, packages, tiers, clients, 
               <div className="field"><label>Do (data odbioru)</label><input type="date" value={(()=>{const d=new Date(f.year,f.month,f.day+(f.days||f.qty||1)-1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;})()} onChange={e=>{ const [y,m,d]=e.target.value.split('-').map(Number); const end=new Date(y,m-1,d); const start=new Date(f.year,f.month,f.day); const days=Math.max(1,Math.round((end-start)/86400000)+1); setF(p=>({...p,days,qty:days})); }}/></div>
             </div>
             <div className="row2">
-              <div className="field"><label>Za ile — wynajem, bez kaucji (zł)</label><input type="number" value={f.rate_override||""} onChange={e=>set("rate_override",e.target.value)} placeholder={f.extra_equip_ids.length?"np. 950 (za cały zestaw)":"np. 850"}/></div>
+              <div className="field"><label>Za ile — wynajem, bez kaucji (zł){f.extra_equip_ids.length>0?" (suma zestawu)":""}</label>
+                <input type="number" value={f.rate_override||""} onChange={e=>set("rate_override",e.target.value)} placeholder={f.extra_equip_ids.length?"np. 950 (za cały zestaw)":"np. 850"} readOnly={f.extra_equip_ids.length>0}/>
+              </div>
               <div className="field"><label>Gdzie (miejscowość)</label><input value={f.delivery_address||""} onChange={e=>set("delivery_address",e.target.value)} placeholder="np. Oborniki"/></div>
             </div>
+            {f.extra_equip_ids.length>0 && <div style={{marginBottom:12}}>
+              <label>Kwota za każdy sprzęt w zestawie (bez kaucji)</label>
+              {[f.equipment_id,...f.extra_equip_ids].map(id=>{ const e=equipment.find(x=>x.id===id); if(!e) return null;
+                return (<div key={id} style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+                  <span style={{flex:1,fontSize:13}}>{e.name}</span>
+                  <input type="number" style={{width:110}} value={(f.set_prices||{})[id]||""} placeholder="zł" onChange={ev=>{
+                    const val = ev.target.value;
+                    const sp = {...(f.set_prices||{}),[id]:val};
+                    const sum = [f.equipment_id,...f.extra_equip_ids].reduce((s,i)=>s+(+sp[i]||0),0);
+                    setF(p=>({...p,set_prices:sp,rate_override:String(sum)}));
+                  }}/>
+                </div>); })}
+            </div>}
             <div className="row2">
               <div className="field"><label>Koszt własny (zł) — dla ROI/marży</label><input type="number" value={f.offer_cost} onChange={e=>set("offer_cost",+e.target.value||0)} placeholder="np. 50"/></div>
               <div className="field"><label>Kaucja pobrana (zł)</label><input type="number" value={f.deposit_override||""} onChange={e=>set("deposit_override",e.target.value)} placeholder="np. 500"/></div>
@@ -645,6 +660,15 @@ function OfferFormModal({onClose, initial, equipment, packages, tiers, clients, 
             ))}
           </div>
         </>}
+        <label>Ręczna korekta kwot (zostaw puste, aby liczyć automatycznie)</label>
+        <div className="row2" style={{marginBottom:10}}>
+          <div className="field"><label style={{fontSize:11}}>Kwota najmu — nadpisz (zł)</label><input type="number" value={f.rate_override||""} onChange={e=>set("rate_override",e.target.value)} placeholder="automatycznie"/></div>
+          <div className="field"><label style={{fontSize:11}}>Transport — nadpisz (zł)</label><input type="number" value={f.transport_override||""} onChange={e=>set("transport_override",e.target.value)} placeholder="automatycznie"/></div>
+        </div>
+        <div className="row2" style={{marginBottom:14}}>
+          <div className="field"><label style={{fontSize:11}}>Zadatek — nadpisz (zł)</label><input type="number" value={f.zadatek_override||""} onChange={e=>set("zadatek_override",e.target.value)} placeholder="automatycznie"/></div>
+          <div className="field"><label style={{fontSize:11}}>Kaucja — nadpisz (zł)</label><input type="number" value={f.deposit_override||""} onChange={e=>set("deposit_override",e.target.value)} placeholder="automatycznie"/></div>
+        </div>
         <label>Dodatki dla klimatu</label>
         <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:10}}>
           {packages.map(p=>(<span key={p.id} className={"chip"+(f.addon_ids.includes(p.id)?" on":"")} onClick={()=>toggleAddon(p.id)}>
