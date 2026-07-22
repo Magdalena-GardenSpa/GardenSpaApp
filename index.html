@@ -1047,7 +1047,8 @@ function VoucherModal({onClose,setErr,flash,setVouchers,clients,initial}){
 function VoucherTermModal({voucher,onClose,equipment,clients,settings,setErr,flash,setVouchers,setOffers}){
   const today = new Date();
   const buyer = clients.find(c=>c.phone===voucher.buyer_phone);
-  const [f,setF]=useState({equipment_id:equipment[0]?equipment[0].id:"", days:1, year:today.getFullYear(), month:today.getMonth(), day:today.getDate(), delivery_address:(buyer&&buyer.address)||""});
+  const [f,setF]=useState({equipment_id:equipment[0]?equipment[0].id:"", days:1, year:today.getFullYear(), month:today.getMonth(), day:today.getDate(),
+    time_start:"12:00", time_end:"11:00", delivery_address:(buyer&&buyer.address)||""});
   const set=(k,v)=>setF(p=>({...p,[k]:v}));
   const save = async ()=>{
     if(!f.equipment_id){ alert("Wybierz sprzęt."); return; }
@@ -1055,7 +1056,7 @@ function VoucherTermModal({voucher,onClose,equipment,clients,settings,setErr,fla
       const offerBody = { phone:voucher.buyer_phone, name:(buyer&&buyer.name)||voucher.buyer_name||"", equipment_id:f.equipment_id, mode:"day", qty:f.days, km:0,
         addon_ids:[], extra_equip_ids:[], custom_items:[], rate_override: f.days>0 ? Math.round((voucher.agreed_total||voucher.value||0)/f.days) : 0,
         transport_override:0, zadatek_override:0, deposit_override:null, voucher_code:voucher.code, offer_cost:0,
-        year:f.year, month:f.month, day:f.day, days:f.days, delivery_address:f.delivery_address, status:"accepted", zadatek_paid:true };
+        year:f.year, month:f.month, day:f.day, days:f.days, delivery_address:f.delivery_address, delivery_time:f.time_start, pickup_time:f.time_end, status:"accepted", zadatek_paid:true };
       const ins = await sbInsert("gs_offers",offerBody);
       setOffers(p=>[ins[0],...p]);
       await sbUpdate("gs_vouchers","id",voucher.id,{linked_offer_id:ins[0].id, equipment_id:f.equipment_id, year:f.year, month:f.month, day:f.day, days:f.days});
@@ -1075,7 +1076,11 @@ function VoucherTermModal({voucher,onClose,equipment,clients,settings,setErr,fla
         </div>
         <div className="row2">
           <div className="field"><label>Data rozpoczęcia</label><input type="date" value={`${f.year}-${String(f.month+1).padStart(2,'0')}-${String(f.day).padStart(2,'0')}`} onChange={e=>{ const [y,m,d]=e.target.value.split('-').map(Number); setF(p=>({...p,year:y,month:m-1,day:d})); }}/></div>
+          <div className="field"><label>Godz. dostawy</label><input type="time" value={f.time_start} onChange={e=>set("time_start",e.target.value)}/></div>
+        </div>
+        <div className="row2">
           <div className="field"><label>Ilość dób</label><input type="number" min="1" value={f.days} onChange={e=>set("days",+e.target.value||1)}/></div>
+          <div className="field"><label>Godz. odbioru (dnia zakończenia)</label><input type="time" value={f.time_end} onChange={e=>set("time_end",e.target.value)}/></div>
         </div>
         <div className="field"><label>Adres dostawy</label><input value={f.delivery_address} onChange={e=>set("delivery_address",e.target.value)}/></div>
         <div className="muted" style={{fontSize:12}}>Wpis pojawi się w kalendarzu i w ofertach oznaczony 🎁. Kaucja rozliczana standardowo jak przy zwykłym wynajmie.</div>
