@@ -983,27 +983,46 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
 
       {(modal==="new"||editingOffer) && <OfferFormModal onClose={()=>{setModal(null);setEditingOffer(null);}} initial={editingOffer||emptyForm(settings)} equipment={equipment} packages={packages} tiers={tiers} clients={clients} settings={settings} vouchers={vouchers} onSave={saveOffer}/>}
       {modal && modal!=="new" && <OfferDetailModal offer={modal} onClose={()=>setModal(null)} equipment={equipment} packages={packages} tiers={tiers} clients={clients} settings={settings} vouchers={vouchers} onToggleZadatek={toggleZadatek} onEdit={()=>{setEditingOffer(modal);setModal(null);}} onDelete={()=>delOffer(modal)}/>}
-      {voucherModal && <VoucherModal onClose={()=>setVoucherModal(false)} settings={settings} clients={clients} setErr={setErr} flash={flash} setVouchers={setVouchers}/>}
-      {voucherEdit && <VoucherModal onClose={()=>setVoucherEdit(null)} initial={voucherEdit} settings={settings} clients={clients} setErr={setErr} flash={flash} setVouchers={setVouchers}/>}
+      {voucherModal && <VoucherModal onClose={()=>setVoucherModal(false)} settings={settings} clients={clients} equipment={equipment} offers={offers} setOffers={setOffers} setErr={setErr} flash={flash} setVouchers={setVouchers}/>}
+      {voucherEdit && <VoucherModal onClose={()=>setVoucherEdit(null)} initial={voucherEdit} settings={settings} clients={clients} equipment={equipment} offers={offers} setOffers={setOffers} setErr={setErr} flash={flash} setVouchers={setVouchers}/>}
       {voucherTerm && <VoucherTermModal voucher={voucherTerm} onClose={()=>setVoucherTerm(null)} equipment={equipment} clients={clients} settings={settings} setErr={setErr} flash={flash} setVouchers={setVouchers} setOffers={setOffers}/>}
     </div>
   );
 }
 
-function VoucherModal({onClose,setErr,flash,setVouchers,clients,initial}){
-  const [f,setF]=useState(initial || {buyer_phone:"",buyer_name:"",recipient_note:"",value:150,cost:0,agreed_total:0,payment_status:"unpaid",valid_until:new Date(new Date().getFullYear()+1,11,31).toISOString().slice(0,10)});
+function VoucherModal({onClose,setErr,flash,setVouchers,clients,equipment,offers,setOffers,initial}){
+  const today = new Date();
+  const endDefault = (y,m,d,days)=>{ const dt=new Date(y,m,d+(days||1)); return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`; };
+  const [f,setF]=useState(initial ? {...initial,
+      equipment_id: initial.equipment_id||"",
+      date_start: initial.year ? `${initial.year}-${String(initial.month+1).padStart(2,'0')}-${String(initial.day).padStart(2,'0')}` : "",
+      date_end: initial.year ? endDefault(initial.year,initial.month,initial.day,initial.days) : "",
+      time_start: initial.time_start||"12:00", time_end: initial.time_end||"11:00"
+    } : {buyer_phone:"",buyer_name:"",recipient_note:"",value:150,cost:0,agreed_total:0,payment_status:"unpaid",valid_until:new Date(new Date().getFullYear()+1,11,31).toISOString().slice(0,10),equipment_id:"",date_start:"",date_end:"",time_start:"12:00",time_end:"11:00"});
   const set=(k,v)=>setF(p=>({...p,[k]:v}));
   const save = async ()=>{
     if(!f.buyer_phone.trim()){ alert("Podaj telefon kupującego, aby utworzyć voucher."); return; }
     try{
+      let termFields = {};
+      if(f.date_start){
+        const [y,m,d]=f.date_start.split('-').map(Number);
+        const [ey,em,ed]=(f.date_end||f.date_start).split('-').map(Number);
+        const days = Math.max(1, Math.round((new Date(ey,em-1,ed)-new Date(y,m-1,d))/86400000));
+        termFields = { equipment_id:f.equipment_id||null, year:y, month:m-1, day:d, days, time_start:f.time_start, time_end:f.time_end };
+      } else { termFields = { equipment_id:f.equipment_id||null }; }
       if(f.id){
-        const body = {buyer_phone:f.buyer_phone, buyer_name:f.buyer_name, recipient_note:f.recipient_note, value:f.value, cost:f.cost, agreed_total:f.agreed_total, payment_status:f.payment_status, valid_until:f.valid_until};
+        const body = {buyer_phone:f.buyer_phone, buyer_name:f.buyer_name, recipient_note:f.recipient_note, value:f.value, cost:f.cost, agreed_total:f.agreed_total, payment_status:f.payment_status, valid_until:f.valid_until, ...termFields};
         await sbUpdate("gs_vouchers","id",f.id,body);
         setVouchers(p=>p.map(x=>x.id===f.id?{...x,...body}:x));
+        if(f.linked_offer_id && termFields.equipment_id){
+          const offerPatch = { equipment_id:termFields.equipment_id, year:termFields.year, month:termFields.month, day:termFields.day, days:termFields.days, delivery_time:termFields.time_start, pickup_time:termFields.time_end };
+          await sbUpdate("gs_offers","id",f.linked_offer_id,offerPatch);
+          setOffers && setOffers(p=>p.map(x=>x.id===f.linked_offer_id?{...x,...offerPatch}:x));
+        }
         flash("Zapisano zmiany w voucherze."); onClose(); return;
       }
       const code = "GSGIFT"+String(Date.now()).slice(-4);
-      const ins = await sbInsert("gs_vouchers",{code, buyer_phone:f.buyer_phone, buyer_name:f.buyer_name, recipient_note:f.recipient_note, value:f.value, cost:f.cost, agreed_total:f.agreed_total||0, payment_status:f.payment_status||"unpaid", valid_until:f.valid_until, redeemed:false});
+      const ins = await sbInsert("gs_vouchers",{code, buyer_phone:f.buyer_phone, buyer_name:f.buyer_name, recipient_note:f.recipient_note, value:f.value, cost:f.cost, agreed_total:f.agreed_total||0, payment_status:f.payment_status||"unpaid", valid_until:f.valid_until, redeemed:false, ...termFields});
       setVouchers(p=>[ins[0],...p]); flash("Utworzono voucher "+code); onClose();
     }catch(ex){ setErr(String(ex.message||ex)); }
   };
@@ -1038,6 +1057,20 @@ function VoucherModal({onClose,setErr,flash,setVouchers,clients,initial}){
         <div className="field"><label>Koszt własny wystawienia (zł) — do marży</label>
           <div className="muted" style={{fontSize:11,marginBottom:4}}>np. jeśli voucher sprzedany taniej niż realna wartość usługi</div>
           <input type="number" value={f.cost} onChange={e=>set("cost",+e.target.value||0)}/></div>
+        <div className="field"><label>Sprzęt</label>
+          <select value={f.equipment_id||""} onChange={e=>set("equipment_id",e.target.value)}>
+            <option value="">Do ustalenia</option>
+            {(equipment||[]).map(e=><option key={e.id} value={e.id}>{e.name}</option>)}
+          </select>
+        </div>
+        <div className="row2">
+          <div className="field"><label>Termin od</label><input type="date" value={f.date_start||""} onChange={e=>set("date_start",e.target.value)}/></div>
+          <div className="field"><label>Godz. dostawy</label><input type="time" value={f.time_start} onChange={e=>set("time_start",e.target.value)}/></div>
+        </div>
+        <div className="row2">
+          <div className="field"><label>Termin do</label><input type="date" value={f.date_end||""} onChange={e=>set("date_end",e.target.value)}/></div>
+          <div className="field"><label>Godz. odbioru</label><input type="time" value={f.time_end} onChange={e=>set("time_end",e.target.value)}/></div>
+        </div>
         <div className="modal-actions"><button className="btn primary" onClick={save}>{f.id?"Zapisz zmiany":"Utwórz voucher"}</button></div>
       </div>
     </div>
@@ -1047,20 +1080,26 @@ function VoucherModal({onClose,setErr,flash,setVouchers,clients,initial}){
 function VoucherTermModal({voucher,onClose,equipment,clients,settings,setErr,flash,setVouchers,setOffers}){
   const today = new Date();
   const buyer = clients.find(c=>c.phone===voucher.buyer_phone);
-  const [f,setF]=useState({equipment_id:equipment[0]?equipment[0].id:"", days:1, year:today.getFullYear(), month:today.getMonth(), day:today.getDate(),
+  const toISO = (y,m,d)=>`${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+  const startISO = toISO(today.getFullYear(),today.getMonth(),today.getDate());
+  const endDefault = new Date(today); endDefault.setDate(endDefault.getDate()+1);
+  const [f,setF]=useState({equipment_id:equipment[0]?equipment[0].id:"", date_start:startISO, date_end:toISO(endDefault.getFullYear(),endDefault.getMonth(),endDefault.getDate()),
     time_start:"12:00", time_end:"11:00", delivery_address:(buyer&&buyer.address)||""});
   const set=(k,v)=>setF(p=>({...p,[k]:v}));
   const save = async ()=>{
     if(!f.equipment_id){ alert("Wybierz sprzęt."); return; }
+    const [y,m,d]=f.date_start.split('-').map(Number);
+    const [ey,em,ed]=f.date_end.split('-').map(Number);
+    const days = Math.max(1, Math.round((new Date(ey,em-1,ed)-new Date(y,m-1,d))/86400000));
     try{
-      const offerBody = { phone:voucher.buyer_phone, name:(buyer&&buyer.name)||voucher.buyer_name||"", equipment_id:f.equipment_id, mode:"day", qty:f.days, km:0,
-        addon_ids:[], extra_equip_ids:[], custom_items:[], rate_override: f.days>0 ? Math.round((voucher.agreed_total||voucher.value||0)/f.days) : 0,
+      const offerBody = { phone:voucher.buyer_phone, name:(buyer&&buyer.name)||voucher.buyer_name||"", equipment_id:f.equipment_id, mode:"day", qty:days, km:0,
+        addon_ids:[], extra_equip_ids:[], custom_items:[], rate_override: Math.round((voucher.agreed_total||voucher.value||0)/days),
         transport_override:0, zadatek_override:0, deposit_override:null, voucher_code:voucher.code, offer_cost:0,
-        year:f.year, month:f.month, day:f.day, days:f.days, delivery_address:f.delivery_address, delivery_time:f.time_start, pickup_time:f.time_end, status:"accepted", zadatek_paid:true };
+        year:y, month:m-1, day:d, days, delivery_address:f.delivery_address, delivery_time:f.time_start, pickup_time:f.time_end, status:"accepted", zadatek_paid:true };
       const ins = await sbInsert("gs_offers",offerBody);
       setOffers(p=>[ins[0],...p]);
-      await sbUpdate("gs_vouchers","id",voucher.id,{linked_offer_id:ins[0].id, equipment_id:f.equipment_id, year:f.year, month:f.month, day:f.day, days:f.days});
-      setVouchers(p=>p.map(x=>x.id===voucher.id?{...x,linked_offer_id:ins[0].id, equipment_id:f.equipment_id, year:f.year, month:f.month, day:f.day, days:f.days}:x));
+      await sbUpdate("gs_vouchers","id",voucher.id,{linked_offer_id:ins[0].id, equipment_id:f.equipment_id, year:y, month:m-1, day:d, days, time_start:f.time_start, time_end:f.time_end});
+      setVouchers(p=>p.map(x=>x.id===voucher.id?{...x,linked_offer_id:ins[0].id, equipment_id:f.equipment_id, year:y, month:m-1, day:d, days}:x));
       flash("Ustalono termin realizacji vouchera — wpisano do kalendarza."); onClose();
     }catch(ex){ setErr(String(ex.message||ex)); }
   };
@@ -1075,12 +1114,12 @@ function VoucherTermModal({voucher,onClose,equipment,clients,settings,setErr,fla
           </select>
         </div>
         <div className="row2">
-          <div className="field"><label>Data rozpoczęcia</label><input type="date" value={`${f.year}-${String(f.month+1).padStart(2,'0')}-${String(f.day).padStart(2,'0')}`} onChange={e=>{ const [y,m,d]=e.target.value.split('-').map(Number); setF(p=>({...p,year:y,month:m-1,day:d})); }}/></div>
+          <div className="field"><label>Termin od</label><input type="date" value={f.date_start} onChange={e=>set("date_start",e.target.value)}/></div>
           <div className="field"><label>Godz. dostawy</label><input type="time" value={f.time_start} onChange={e=>set("time_start",e.target.value)}/></div>
         </div>
         <div className="row2">
-          <div className="field"><label>Ilość dób</label><input type="number" min="1" value={f.days} onChange={e=>set("days",+e.target.value||1)}/></div>
-          <div className="field"><label>Godz. odbioru (dnia zakończenia)</label><input type="time" value={f.time_end} onChange={e=>set("time_end",e.target.value)}/></div>
+          <div className="field"><label>Termin do</label><input type="date" value={f.date_end} onChange={e=>set("date_end",e.target.value)}/></div>
+          <div className="field"><label>Godz. odbioru</label><input type="time" value={f.time_end} onChange={e=>set("time_end",e.target.value)}/></div>
         </div>
         <div className="field"><label>Adres dostawy</label><input value={f.delivery_address} onChange={e=>set("delivery_address",e.target.value)}/></div>
         <div className="muted" style={{fontSize:12}}>Wpis pojawi się w kalendarzu i w ofertach oznaczony 🎁. Kaucja rozliczana standardowo jak przy zwykłym wynajmie.</div>
