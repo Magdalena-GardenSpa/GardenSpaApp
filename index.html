@@ -1098,7 +1098,7 @@ function VoucherTermModal({voucher,onClose,equipment,clients,settings,setErr,fla
   const toISO = (y,m,d)=>`${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
   const startISO = toISO(today.getFullYear(),today.getMonth(),today.getDate());
   const endDefault = new Date(today); endDefault.setDate(endDefault.getDate()+1);
-  const [f,setF]=useState({equipment_id:equipment[0]?equipment[0].id:"", date_start:startISO, date_end:toISO(endDefault.getFullYear(),endDefault.getMonth(),endDefault.getDate()),
+  const [f,setF]=useState({equipment_id:voucher.equipment_id||(equipment[0]?equipment[0].id:""), date_start:startISO, date_end:toISO(endDefault.getFullYear(),endDefault.getMonth(),endDefault.getDate()),
     time_start:"12:00", time_end:"11:00", delivery_address:(buyer&&buyer.address)||""});
   const set=(k,v)=>setF(p=>({...p,[k]:v}));
   const save = async ()=>{
