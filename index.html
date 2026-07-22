@@ -949,7 +949,7 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
                 <div><b>{v.code}</b><div className="muted" style={{fontSize:12}}>{displayName(v.buyer_phone,(buyer&&buyer.name)||v.buyer_name)}{v.recipient_note?" · "+v.recipient_note:""}</div></div>
                 <span className={"badge "+st.cls}>{st.label}</span>
               </div>
-              {eq && v.linked_offer_id && <div className="muted" style={{fontSize:12,marginTop:4}}>🎁 {eq.name} · {dateRangeLabel(v)}</div>}
+              {eq && <div className="muted" style={{fontSize:12,marginTop:4}}>🎁 {eq.name}{v.linked_offer_id?" · "+dateRangeLabel(v):" (wybrany, termin do ustalenia)"}</div>}
               <div style={{display:"flex",gap:16,marginTop:8,fontSize:12.5,flexWrap:"wrap"}}>
                 <span>Wartość vouchera: <b>{fmt(v.value)}</b></span>
                 {v.agreed_total>0 && <span>Uzgodniona kwota najmu: <b>{fmt(v.agreed_total)}</b></span>}
