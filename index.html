@@ -906,6 +906,10 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
 
   const expiredCount = offers.filter(isExpired).length;
   const doneCount = offers.filter(o=>o.status==="done").length;
+  const activeCount = offers.filter(o=>o.status!=="done" && !isExpired(o)).length;
+  const voucherActiveCount = vouchers.filter(v=>isVoucherUsable(v)).length;
+  const voucherExpiredCount = vouchers.filter(v=>!v.redeemed && isVoucherExpired(v)).length;
+  const voucherDoneCount = vouchers.filter(v=>v.redeemed).length;
 
   return (
     <div>
@@ -916,10 +920,10 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
         </div>
       </div>
       <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>
-        <button className={"btn sm "+(view==="active"?"primary":"ghost")} onClick={()=>setView("active")}>Aktywne</button>
-        <button className={"btn sm "+(view==="expired"?"primary":"ghost")} onClick={()=>setView("expired")}>⏳ Wygasłe ({expiredCount})</button>
-        <button className={"btn sm "+(view==="done"?"primary":"ghost")} onClick={()=>setView("done")}>📦 Zarchiwizowane ({doneCount})</button>
-        <button className={"btn sm "+(view==="vouchers"?"primary":"ghost")} onClick={()=>setView("vouchers")}>🎁 Vouchery ({vouchers.length})</button>
+        <button className={"btn sm "+(view==="active"?"primary":"ghost")} onClick={()=>setView("active")}>Aktywne ({activeCount+voucherActiveCount})</button>
+        <button className={"btn sm "+(view==="expired"?"primary":"ghost")} onClick={()=>setView("expired")}>⏳ Wygasłe ({expiredCount+voucherExpiredCount})</button>
+        <button className={"btn sm "+(view==="done"?"primary":"ghost")} onClick={()=>setView("done")}>📦 Zarchiwizowane ({doneCount+voucherDoneCount})</button>
+        <button className={"btn sm "+(view==="vouchers"?"primary":"ghost")} onClick={()=>setView("vouchers")}>🎁 Vouchery ({voucherActiveCount})</button>
       </div>
       {view==="vouchers" ? (
         <>
