@@ -496,7 +496,10 @@ function Klienci({clients,setClients,offers,equipment,settings,packages,tiers,vo
                   <option value="sent">📤 Wysłany</option>
                   <option value="used">✅ Zrealizowany</option>
                 </select>
-            <a className="btn ghost sm" href={`https://wa.me/${waPhone(sel.phone)}?text=${encodeURIComponent(referralMsg(sel,settings))}`} target="_blank" rel="noopener" onClick={()=>updateClient({referral_status:"sent"})}>Wyślij kod</a>
+              </div>
+              <div style={{display:"flex",gap:8,marginBottom:8}}>
+                <a className="btn ghost sm" href={`https://wa.me/${waPhone(sel.phone)}?text=${encodeURIComponent(referralMsg(sel,settings))}`} target="_blank" rel="noopener" onClick={()=>updateClient({referral_status:"sent"})} style={{flex:1,textAlign:"center"}}>WhatsApp</a>
+                <a className="btn ghost sm" href={`sms:${sel.phone}?&body=${encodeURIComponent(referralMsg(sel,settings))}`} onClick={()=>updateClient({referral_status:"sent"})} style={{flex:1,textAlign:"center"}}>SMS</a>
               </div>
               <div className="row2">
                 <div className="field"><label>Typ rabatu polecenia</label>
@@ -534,7 +537,7 @@ function Klienci({clients,setClients,offers,equipment,settings,packages,tiers,vo
           const stMap={draft:["Robocza","b-grey"],sent:["Wysłana","b-blue"],accepted:["Zaakceptowana","b-green"],done:["Zrealizowana","b-amber"]};
           const st = stMap[o.status]||stMap.draft;
           return (<div key={o.id} className="card" style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
-            <div><b>{eq?eq.name:"—"}</b><div className="muted" style={{fontSize:12}}>{dateRangeLabel(o)}</div></div>
+            <div><b>{eq?eq.name:"—"}{calc.extraEquip.length>0?` + ${calc.extraEquip.map(e=>e.name).join(" + ")}`:""}</b><div className="muted" style={{fontSize:12}}>{dateRangeLabel(o)}</div></div>
             <div style={{textAlign:"right"}}><span className={"badge "+st[1]}>{st[0]}</span><div style={{fontWeight:700}}>{fmt(calc.total-calc.deposit)}</div></div>
           </div>); })}
       </div>
@@ -964,7 +967,11 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
       // referral reward
       if(f.referral_code){
         const referrer = clients.find(c=>referralCode(c)===String(f.referral_code).trim().toUpperCase() && c.phone!==f.phone);
-        if(referrer){ await sbUpdate("gs_clients","id",referrer.id,{referral_pct_pending:settings.referral_pct, referral_discount_value:settings.referral_pct, referral_discount_type:'percent', referral_status:'active'}); setClients(p=>p.map(c=>c.id===referrer.id?{...c,referral_pct_pending:settings.referral_pct, referral_discount_value:settings.referral_pct, referral_discount_type:'percent', referral_status:'active'}:c)); }
+        if(referrer){
+          const validUntil = referrer.referral_valid_until || (settings.referral_default_days ? new Date(Date.now()+settings.referral_default_days*86400000).toISOString().slice(0,10) : null);
+          await sbUpdate("gs_clients","id",referrer.id,{referral_pct_pending:settings.referral_pct, referral_discount_value:settings.referral_pct, referral_discount_type:'percent', referral_status:'active', referral_valid_until:validUntil});
+          setClients(p=>p.map(c=>c.id===referrer.id?{...c,referral_pct_pending:settings.referral_pct, referral_discount_value:settings.referral_pct, referral_discount_type:'percent', referral_status:'active', referral_valid_until:validUntil}:c));
+        }
       }
       // consume own pending discount (rabat wykorzystany w tej ofercie -> kod "zrealizowany")
       if(exists && (exists.referral_pct_pending || exists.referral_discount_value)){ await sbUpdate("gs_clients","id",exists.id,{referral_pct_pending:0, referral_discount_value:0, referral_status:'used'}); setClients(p=>p.map(c=>c.id===exists.id?{...c,referral_pct_pending:0, referral_discount_value:0, referral_status:'used'}:c)); }
@@ -1583,7 +1590,12 @@ function Ustawienia({settings,setSettings,equipment,setEquipment,packages,setPac
       </details>
       <details className="card">
         <summary style={{cursor:"pointer",fontWeight:700}}>⏳ Ważność kodu</summary>
-        <div className="muted" style={{fontSize:12,marginTop:8}}>Każdy kod ma własny termin ważności — ustawiasz go indywidualnie przy kliencie (zakładka Klienci → 🎁 Kod polecenia → "Kod ważny do").</div>
+        <div style={{marginTop:10}}>
+          <div className="field"><label>Domyślna ważność kodu dla wszystkich (dni od utworzenia)</label>
+            <input type="number" defaultValue={settings.referral_default_days||""} placeholder="np. 90 (puste = bez limitu)" onBlur={ev=>saveSettings({referral_default_days:+ev.target.value||null})}/>
+          </div>
+          <div className="muted" style={{fontSize:12}}>Ta wartość ustawia domyślny termin nowym kodom. Dla konkretnego klienta możesz ją nadpisać indywidualnie w zakładce Klienci → 🎁 Kod polecenia → "Kod ważny do".</div>
+        </div>
       </details>
       </>)}
 
