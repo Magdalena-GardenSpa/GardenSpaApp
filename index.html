@@ -130,7 +130,14 @@ const WEEKDAYS = ['Pn','Wt','Śr','Cz','Pt','So','Nd'];
 const COLOR_SWATCHES = ['#153826','#3a6350','#c9a227','#8a5a3b','#5b4b8a','#2f6f8f','#a13d3d'];
 const LOGO = "https://ugc.production.linktr.ee/dce7fc8e-f896-412b-b1b8-4a47ce1d35e5_1000001073.jpeg";
 
-function referralCode(phone){ return 'GS'+String(phone||'').replace(/\D/g,'').slice(-4); }
+function referralCode(client){
+  if(typeof client==='object' && client) return client.referral_code || 'GS'+String(client.phone||'').replace(/\D/g,'').slice(-4);
+  return 'GS'+String(client||'').replace(/\D/g,'').slice(-4);
+}
+function referralMsg(client,settings){
+  const tpl = settings.referral_msg_template || '🌿 GardenSpa — Twój kod polecenia: {kod}\n\nPoleć nas znajomym! Gdy skorzystają z wynajmu i podadzą ten kod, Ty otrzymasz {procent}% rabatu na kolejny wynajem 🛁🔥';
+  return tpl.replaceAll('{kod}', client.referral_code||referralCode(client)).replaceAll('{procent}', settings.referral_pct||15);
+}
 function waPhone(p){ const d=String(p||'').replace(/\D/g,''); return d.startsWith('48')?d:'48'+d; }
 function displayName(phone, name){ return name ? name : phone + ' (brak imienia)'; }
 function isVoucherExpired(v){ if(!v) return false; const today=new Date(); const u=new Date(v.valid_until); return u < today; }
@@ -171,8 +178,14 @@ function computeCalc(f, equipment, settings, packages, clients, vouchers){
   const deposit = (f.deposit_override!=null && f.deposit_override!=='') ? +f.deposit_override : depositAuto;
   const zad = (f.zadatek_override!=null && f.zadatek_override!=='') ? +f.zadatek_override : (+settings.zadatek||0);
   const client = clients.find(c=>c.phone===f.phone);
-  const discountPct = (client && client.referral_pct_pending) ? client.referral_pct_pending : 0;
-  const discountAmt = Math.round((rentalBase+extraRental) * discountPct / 100);
+  const clientDiscType = client?.referral_discount_type || 'percent';
+  const clientDiscValue = client?.referral_discount_value || client?.referral_pct_pending || 0;
+  const discExpired = client?.referral_valid_until && new Date(client.referral_valid_until) < new Date(new Date().toDateString());
+  const applyDiscount = f.apply_client_discount!==false && clientDiscValue>0 && !discExpired;
+  const discountType = f.discount_type_override || clientDiscType;
+  const discountValue = (f.discount_value_override!=null && f.discount_value_override!=='') ? +f.discount_value_override : clientDiscValue;
+  const discountAmt = applyDiscount ? (discountType==='amount' ? Math.min(discountValue, rentalBase+extraRental) : Math.round((rentalBase+extraRental) * discountValue / 100)) : 0;
+  const discountPct = discountType==='percent' ? discountValue : 0;
   const rentalAfterReferral = rentalBase + extraRental - discountAmt;
   const voucher = (vouchers||[]).find(v=>v.code === String(f.voucher_code||'').trim().toUpperCase());
   const voucherUsable = isVoucherUsable(voucher);
@@ -180,7 +193,7 @@ function computeCalc(f, equipment, settings, packages, clients, vouchers){
   const voucherAmt = voucherUsable ? Math.min(+voucher.value||0, rentalAfterReferral+transport+addonsSum+customSum) : 0;
   const total = preVoucherTotal - voucherAmt;
   const offerCost = +f.offer_cost||0;
-  return { rental: rentalAfterReferral, extraEquip, discountAmt, discountPct, transport, addonsSum, customSum, deposit, zadatek: zad, total, billKm, kmTotal, voucher, voucherUsable, voucherAmt, offerCost, eq };
+  return { rental: rentalAfterReferral, extraEquip, discountAmt, discountPct, discountType, discExpired, applyDiscount, clientDiscValue, transport, addonsSum, customSum, deposit, zadatek: zad, total, billKm, kmTotal, voucher, voucherUsable, voucherAmt, offerCost, eq };
 }
 
 function computeExpiry(settings){
@@ -439,6 +452,8 @@ function Kalendarz({equipment,offers,clients}){
 function Klienci({clients,setClients,offers,equipment,settings,packages,tiers,vouchers,setOffers,flash,setErr,reload,setTab}){
   const [search,setSearch]=useState("");
   const [selPhone,setSelPhone]=useState(null);
+  const [checked,setChecked]=useState({});
+  const [broadcast,setBroadcast]=useState(null);
   const digits = search.replace(/\D/g,"");
   const filtered = clients.filter(c=>!digits || c.phone.replace(/\D/g,"").includes(digits));
   const showAddNew = digits.length>=6 && !clients.some(c=>c.phone.replace(/\D/g,"")===digits);
@@ -461,10 +476,40 @@ function Klienci({clients,setClients,offers,equipment,settings,packages,tiers,vo
         <div className="topbar"><div><h1>Klienci</h1><p>Szczegóły klienta</p></div></div>
         <button className="btn ghost sm" style={{marginBottom:14}} onClick={()=>setSelPhone(null)}>‹ Wszyscy klienci</button>
         <div className="card" style={{marginBottom:16}}>
-          <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}><b style={{fontSize:16}}>{displayName(sel.phone,sel.name)}</b></div>
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
+            <b style={{fontSize:16}}>{displayName(sel.phone,sel.name)}</b>
+            {sel.referral_status && sel.referral_status!=="active" && (
+              <span className={"badge "+(sel.referral_status==="used"?"b-green":sel.referral_status==="sent"?"b-blue":"b-grey")}>
+                {sel.referral_status==="used"?"✅ Kod zrealizowany":sel.referral_status==="sent"?"📤 Kod wysłany":sel.referral_status}
+              </span>
+            )}
+          </div>
           <div className="muted" style={{marginBottom:4}}>{sel.phone}</div>
-          <div style={{fontSize:12,color:"var(--muted)",marginBottom:10}}>Kod polecenia: <b style={{color:"var(--green-d)"}}>{referralCode(sel.phone)}</b></div>
-          {sel.referral_pct_pending>0 && <div className="banner ok" style={{fontSize:12}}>🎁 Rabat do wykorzystania: {sel.referral_pct_pending}% na kolejny wynajem</div>}
+          <details style={{marginBottom:10}}>
+            <summary style={{cursor:"pointer",fontSize:12.5,color:"var(--green-d)",fontWeight:600,padding:"6px 0"}}>🎁 Kod polecenia {sel.referral_pct_pending>0 && !sel.referral_discount_value ? `(${sel.referral_pct_pending}% do wykorzystania)` : (sel.referral_discount_value?`(${sel.referral_discount_value}${sel.referral_discount_type==='amount'?' zł':'%'} do wykorzystania)`:'')}</summary>
+            <div style={{marginTop:8}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,flexWrap:"wrap"}}>
+                <span style={{fontSize:12,color:"var(--muted)"}}>Kod:</span>
+                <input defaultValue={sel.referral_code||referralCode(sel)} onBlur={e=>updateClient({referral_code:e.target.value.toUpperCase()})} style={{width:110,fontWeight:700,color:"var(--green-d)",padding:"2px 8px"}}/>
+                <select value={sel.referral_status||"active"} onChange={e=>updateClient({referral_status:e.target.value})} style={{width:"auto",padding:"4px 8px",fontSize:12}}>
+                  <option value="active">🟢 Aktywny</option>
+                  <option value="sent">📤 Wysłany</option>
+                  <option value="used">✅ Zrealizowany</option>
+                </select>
+            <a className="btn ghost sm" href={`https://wa.me/${waPhone(sel.phone)}?text=${encodeURIComponent(referralMsg(sel,settings))}`} target="_blank" rel="noopener" onClick={()=>updateClient({referral_status:"sent"})}>Wyślij kod</a>
+              </div>
+              <div className="row2">
+                <div className="field"><label>Typ rabatu polecenia</label>
+                  <select value={sel.referral_discount_type||"percent"} onChange={e=>updateClient({referral_discount_type:e.target.value})}>
+                    <option value="percent">Procentowy (%)</option>
+                    <option value="amount">Kwotowy (zł)</option>
+                  </select>
+                </div>
+                <div className="field"><label>Wartość rabatu</label><input type="number" defaultValue={sel.referral_discount_value||sel.referral_pct_pending||0} onBlur={e=>updateClient({referral_discount_value:+e.target.value||0})}/></div>
+              </div>
+              <div className="field"><label>Kod ważny do (opcjonalnie)</label><input type="date" defaultValue={sel.referral_valid_until||""} onChange={e=>updateClient({referral_valid_until:e.target.value||null})}/></div>
+            </div>
+          </details>
           <div className="row2">
             <div className="field"><label>Typ klienta</label>
               <select defaultValue={sel.client_type||"private"} onChange={e=>updateClient({client_type:e.target.value})}>
@@ -472,7 +517,7 @@ function Klienci({clients,setClients,offers,equipment,settings,packages,tiers,vo
                 <option value="company">Firma</option>
               </select>
             </div>
-            <div className="field"><label>Imię i nazwisko (opcjonalne)</label><input defaultValue={sel.name||""} onBlur={e=>updateClient({name:e.target.value})}/></div>
+            <div className="field"><label>Imię i nazwisko</label><input defaultValue={sel.name||""} onBlur={e=>updateClient({name:e.target.value})}/></div>
           </div>
           <div className="row2">
             <div className="field"><label>Miejscowość (opcjonalnie)</label><input defaultValue={sel.city||""} onBlur={e=>updateClient({city:e.target.value})}/></div>
@@ -500,12 +545,86 @@ function Klienci({clients,setClients,offers,equipment,settings,packages,tiers,vo
     <div>
       <div className="topbar"><div><h1>Klienci</h1><p>Szukaj po numerze telefonu</p></div></div>
       <div className="field"><input placeholder="np. 600 111 222" value={search} onChange={e=>setSearch(e.target.value)}/></div>
-      {filtered.map(c=>(<div key={c.id} className="card" style={{display:"flex",justifyContent:"space-between",marginBottom:8,cursor:"pointer"}} onClick={()=>setSelPhone(c.phone)}>
-        <div><b>{displayName(c.phone,c.name)}</b><div className="muted" style={{fontSize:12}}>{c.phone}</div></div>
-        <span className="muted">{offers.filter(o=>o.phone===c.phone).length} zlec.</span>
+      {filtered.length>0 && !broadcast && (
+        <div style={{marginBottom:10}}>
+          <button className="btn ghost sm" onClick={()=>setBroadcast({text:"",step:"compose"})}>📣 Nowa wiadomość / promocja</button>
+        </div>
+      )}
+      {filtered.map(c=>(<div key={c.id} className="card" style={{display:"flex",alignItems:"center",marginBottom:8,gap:10}}>
+        <div style={{flex:1,minWidth:0,cursor:"pointer"}} onClick={()=>setSelPhone(c.phone)}>
+          <b>{displayName(c.phone,c.name)}</b><div className="muted" style={{fontSize:12}}>{c.phone}</div>
+        </div>
+        <span className="muted" style={{fontSize:12,whiteSpace:"nowrap",cursor:"pointer"}} onClick={()=>setSelPhone(c.phone)}>{offers.filter(o=>o.phone===c.phone).length} zlec.</span>
       </div>))}
       {showAddNew && <button className="btn primary" onClick={addClient}>+ Dodaj nowy numer {search}</button>}
       {!filtered.length && !showAddNew && <div className="empty">Wpisz numer, aby wyszukać lub dodać klienta.</div>}
+      {broadcast && <BroadcastModal clients={clients} filtered={filtered} onClose={()=>{setBroadcast(null);setSelecting(false);setChecked({});}}/>}
+    </div>
+  );
+}
+
+function BroadcastModal({clients,filtered,onClose}){
+  const [text,setText]=useState("🌿 GardenSpa — nowość dla Ciebie!\n\nMamy dla Ciebie specjalną promocję na wynajem balii/sauny. Napisz, żeby zarezerwować termin! 🛁🔥");
+  const [step,setStep]=useState("compose"); // compose | pick | send
+  const [checked,setChecked]=useState({});
+  const [sent,setSent]=useState({});
+  const toggle=(id)=>setChecked(p=>({...p,[id]:!p[id]}));
+  const allChecked = filtered.length>0 && filtered.every(c=>checked[c.id]);
+  const recipients = filtered.filter(c=>checked[c.id]);
+  const markSent=(id)=>setSent(p=>({...p,[id]:true}));
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={e=>e.stopPropagation()}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+          <h2>{step==="compose"?"Treść wiadomości":step==="pick"?"Do kogo wysłać?":"Wysyłka"}</h2>
+          <button className="btn ghost sm" onClick={onClose}>✕</button>
+        </div>
+
+        {step==="compose" && (<>
+          <div className="field"><label>Treść wiadomości / promocji</label><textarea rows="6" value={text} onChange={e=>setText(e.target.value)}/></div>
+          <button className="btn primary" style={{width:"100%"}} onClick={()=>setStep("pick")}>Dalej — wybierz odbiorców ›</button>
+        </>)}
+
+        {step==="pick" && (<>
+          <label style={{display:"flex",alignItems:"center",gap:6,fontSize:12.5,color:"var(--muted)",marginBottom:10}}>
+            <input type="checkbox" checked={allChecked} onChange={e=>{ const v=e.target.checked; const patch={}; filtered.forEach(c=>patch[c.id]=v); setChecked(p=>({...p,...patch})); }} style={{width:16,height:16,flexShrink:0}}/>
+            Zaznacz wszystkich ({filtered.length})
+          </label>
+          <div style={{maxHeight:340,overflowY:"auto"}}>
+            {filtered.map(c=>(
+              <div key={c.id} className="card" style={{display:"flex",alignItems:"center",marginBottom:8,gap:10}}>
+                <input type="checkbox" checked={!!checked[c.id]} onChange={()=>toggle(c.id)} style={{width:16,height:16,flexShrink:0}}/>
+                <div><b>{displayName(c.phone,c.name)}</b><div className="muted" style={{fontSize:12}}>{c.phone}</div></div>
+              </div>
+            ))}
+          </div>
+          <div style={{display:"flex",gap:8,marginTop:10}}>
+            <button className="btn ghost" onClick={()=>setStep("compose")}>‹ Wróć</button>
+            <button className="btn primary" style={{flex:1}} disabled={!recipients.length} onClick={()=>setStep("send")}>Dalej — wyślij do {recipients.length} ›</button>
+          </div>
+        </>)}
+
+        {step==="send" && (<>
+          <p className="muted" style={{fontSize:12,marginBottom:10}}>Każda wysyłka otwiera osobny draft (WhatsApp/SMS) — Ty klikasz "Wyślij" u każdego odbiorcy w swojej aplikacji.</p>
+          {recipients.map(c=>{
+            const phoneDigits = c.phone.replace(/\D/g,"");
+            const waHref = `https://wa.me/48${phoneDigits.replace(/^48/,"")}?text=${encodeURIComponent(text)}`;
+            const smsHref = `sms:${c.phone}?&body=${encodeURIComponent(text)}`;
+            return (
+              <div key={c.id} className="card" style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,gap:8}}>
+                <div><b>{displayName(c.phone,c.name)}</b><div className="muted" style={{fontSize:12}}>{c.phone}</div></div>
+                <div style={{display:"flex",gap:6}}>
+                  <a className="btn ghost sm" href={waHref} target="_blank" rel="noopener" onClick={()=>markSent(c.id)}>WhatsApp</a>
+                  <a className="btn ghost sm" href={smsHref} onClick={()=>markSent(c.id)}>SMS</a>
+                  {sent[c.id] && <span style={{color:"var(--green-d)",fontSize:16}}>✓</span>}
+                </div>
+              </div>
+            );
+          })}
+          <button className="btn ghost" style={{marginTop:8}} onClick={()=>setStep("pick")}>‹ Wróć do listy odbiorców</button>
+        </>)}
+      </div>
     </div>
   );
 }
@@ -531,7 +650,7 @@ function OfferFormModal({onClose, initial, equipment, packages, tiers, clients, 
   };
   const calc = computeCalc(f, equipment, settings, packages, clients, vouchers);
   const eqSel = equipment.find(e=>e.id===f.equipment_id) || {};
-  const referrer = clients.find(c=>referralCode(c.phone)===String(f.referral_code||"").trim().toUpperCase() && c.phone!==f.phone);
+  const referrer = clients.find(c=>referralCode(c)===String(f.referral_code||"").trim().toUpperCase() && c.phone!==f.phone);
   const voucherHit = vouchers.find(v=>v.code===String(f.voucher_code||"").trim().toUpperCase());
 
   const toggleAddon = id => set("addon_ids", f.addon_ids.includes(id) ? f.addon_ids.filter(x=>x!==id) : [...f.addon_ids,id]);
@@ -562,7 +681,7 @@ function OfferFormModal({onClose, initial, equipment, packages, tiers, clients, 
               <div className="field"><label>Telefon</label><input list="dl-phones" value={f.phone} onChange={e=>{const v=e.target.value; set("phone",v); const c=clients.find(x=>x.phone===v); if(c) setF(p=>({...p,phone:v,name:c.name||p.name,delivery_address:p.delivery_address||c.city||""}));}} placeholder="600 111 222"/>
                 <datalist id="dl-phones">{clients.map(c=><option key={c.id} value={c.phone}>{c.name}</option>)}</datalist>
               </div>
-              <div className="field"><label>Imię i nazwisko (opcjonalne)</label><input list="dl-names" value={f.name} onChange={e=>{const v=e.target.value; set("name",v); const c=clients.find(x=>x.name===v); if(c) setF(p=>({...p,name:v,phone:c.phone||p.phone,delivery_address:p.delivery_address||c.city||""}));}}/>
+              <div className="field"><label>Imię i nazwisko</label><input list="dl-names" value={f.name} onChange={e=>{const v=e.target.value; set("name",v); const c=clients.find(x=>x.name===v); if(c) setF(p=>({...p,name:v,phone:c.phone||p.phone,delivery_address:p.delivery_address||c.city||""}));}}/>
                 <datalist id="dl-names">{clients.filter(c=>c.name).map(c=><option key={c.id} value={c.name}>{c.phone}</option>)}</datalist>
               </div>
             </div>
@@ -607,7 +726,7 @@ function OfferFormModal({onClose, initial, equipment, packages, tiers, clients, 
               <div className="field"><label>Kaucja pobrana (zł)</label><input type="number" value={f.deposit_override||""} onChange={e=>set("deposit_override",e.target.value)} placeholder="np. 500"/></div>
             </div>
             <label style={{display:"flex",alignItems:"center",gap:8,marginTop:8,cursor:"pointer"}}>
-              <input type="checkbox" checked={!!f.deposit_returned} onChange={e=>set("deposit_returned",e.target.checked)}/> Kaucja zwrócona klientowi
+              <input type="checkbox" checked={!!f.deposit_returned} onChange={e=>set("deposit_returned",e.target.checked)} style={{width:16,height:16,flexShrink:0}}/> Kaucja zwrócona klientowi
             </label>
             <div className="row2" style={{marginTop:10}}>
               <div className="field"><label>Kod vouchera podarunkowego (opcjonalnie)</label>
@@ -621,7 +740,25 @@ function OfferFormModal({onClose, initial, equipment, packages, tiers, clients, 
                   {referrer ? `✓ ${displayName(referrer.phone,referrer.name)} — ${settings.referral_pct}% rabatu.` : "✗ Nie znaleziono."}</div>}
               </div>
             </div>
-            {calc.discountPct>0 && <div className="banner ok" style={{fontSize:12}}>🎁 Klient ma rabat {calc.discountPct}% do wykorzystania na ten wynajem (-{fmt(calc.discountAmt)}).</div>}
+            {calc.clientDiscValue>0 && (
+              <div className="card" style={{background:calc.discExpired?"#faf0ee":"#eef7ee",marginBottom:4}}>
+                {calc.discExpired ? <b style={{color:"#b3261e",fontSize:12.5}}>⏳ Kod klienta wygasł — rabat niedostępny.</b> : (<>
+                  <label style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,cursor:"pointer"}}>
+                    <input type="checkbox" checked={f.apply_client_discount!==false} onChange={e=>set("apply_client_discount",e.target.checked)} style={{width:16,height:16,flexShrink:0}}/>
+                    Zastosuj rabat klienta za polecenie
+                  </label>
+                  <div className="row2">
+                    <div className="field"><label>Typ rabatu</label>
+                      <select value={f.discount_type_override||client?.referral_discount_type||"percent"} onChange={e=>set("discount_type_override",e.target.value)}>
+                        <option value="percent">Procentowy (%)</option>
+                        <option value="amount">Kwotowy (zł)</option>
+                      </select>
+                    </div>
+                    <div className="field"><label>Wartość</label><input type="number" value={f.discount_value_override??calc.clientDiscValue} onChange={e=>set("discount_value_override",e.target.value)}/></div>
+                  </div>
+                </>)}
+              </div>
+            )}
             <div className="calc-box">
               <div className="calc-line"><span>Razem wynajem (z rabatami, bez kaucji)</span><span>{fmt(calc.total-calc.deposit)}</span></div>
             </div>
@@ -632,7 +769,7 @@ function OfferFormModal({onClose, initial, equipment, packages, tiers, clients, 
           <div className="field"><label>Telefon</label><input list="dl-phones" value={f.phone} onChange={e=>{const v=e.target.value; set("phone",v); const c=clients.find(x=>x.phone===v); if(c) setF(p=>({...p,phone:v,name:c.name||p.name}));}} placeholder="600 111 222"/>
             <datalist id="dl-phones">{clients.map(c=><option key={c.id} value={c.phone}>{c.name}</option>)}</datalist>
           </div>
-          <div className="field"><label>Imię i nazwisko (opcjonalne)</label><input list="dl-names" value={f.name} onChange={e=>{const v=e.target.value; set("name",v); const c=clients.find(x=>x.name===v); if(c) setF(p=>({...p,name:v,phone:c.phone||p.phone}));}}/>
+          <div className="field"><label>Imię i nazwisko</label><input list="dl-names" value={f.name} onChange={e=>{const v=e.target.value; set("name",v); const c=clients.find(x=>x.name===v); if(c) setF(p=>({...p,name:v,phone:c.phone||p.phone}));}}/>
             <datalist id="dl-names">{clients.filter(c=>c.name).map(c=><option key={c.id} value={c.name}>{c.phone}</option>)}</datalist>
           </div>
         </div>
@@ -711,7 +848,7 @@ function OfferFormModal({onClose, initial, equipment, packages, tiers, clients, 
 
         <div className="calc-box">
           <div className="calc-line"><span>Wynajem</span><span>{fmt(calc.rental)}</span></div>
-          {calc.discountAmt>0 && <div className="calc-line" style={{color:"#9a6b00"}}><span>Rabat polecenia</span><span>-{fmt(calc.discountAmt)} ({calc.discountPct}%)</span></div>}
+          {calc.discountAmt>0 && <div className="calc-line" style={{color:"#9a6b00"}}><span>Rabat polecenia</span><span>-{fmt(calc.discountAmt)}{calc.discountType==='percent'?` (${calc.discountPct}%)`:''}</span></div>}
           <div className="calc-line"><span>Transport ({f.km||0} km w 1 str. × 4 = {calc.kmTotal} km, {settings.free_km*4} km w cenie, {calc.billKm} płatne)</span><span>{fmt(calc.transport)}</span></div>
           <div className="calc-line"><span>Dodatki</span><span>{fmt(calc.addonsSum)}</span></div>
           {calc.voucherAmt>0 && <div className="calc-line" style={{color:"#9a6b00"}}><span>Voucher podarunkowy</span><span>-{fmt(calc.voucherAmt)}</span></div>}
@@ -767,7 +904,7 @@ function OfferDetailModal({offer,onClose,equipment,packages,tiers,clients,settin
         {offer.offer_cost>0 && <div style={{fontSize:13,marginBottom:10,color:"#b3261e"}}>Koszt własny tego wynajmu: {fmt(offer.offer_cost)}</div>}
         <div className="calc-box">
           <div className="calc-line"><span>Wynajem</span><span>{fmt(calc.rental)}</span></div>
-          {calc.discountAmt>0 && <div className="calc-line" style={{color:"#9a6b00"}}><span>Rabat polecenia</span><span>-{fmt(calc.discountAmt)} ({calc.discountPct}%)</span></div>}
+          {calc.discountAmt>0 && <div className="calc-line" style={{color:"#9a6b00"}}><span>Rabat polecenia</span><span>-{fmt(calc.discountAmt)}{calc.discountType==='percent'?` (${calc.discountPct}%)`:''}</span></div>}
           {calc.voucherAmt>0 && <div className="calc-line" style={{color:"#9a6b00"}}><span>Voucher</span><span>-{fmt(calc.voucherAmt)}</span></div>}
           <div className="calc-line"><span>Transport</span><span>{fmt(calc.transport)}</span></div>
           <div className="calc-line"><span>Zadatek</span><span>{fmt(calc.zadatek)}</span></div>
@@ -826,11 +963,11 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
       else if(f.name && !exists.name){ await sbUpdate("gs_clients","id",exists.id,{name:f.name}); setClients(p=>p.map(c=>c.id===exists.id?{...c,name:f.name}:c)); }
       // referral reward
       if(f.referral_code){
-        const referrer = clients.find(c=>referralCode(c.phone)===String(f.referral_code).trim().toUpperCase() && c.phone!==f.phone);
-        if(referrer){ await sbUpdate("gs_clients","id",referrer.id,{referral_pct_pending:settings.referral_pct}); setClients(p=>p.map(c=>c.id===referrer.id?{...c,referral_pct_pending:settings.referral_pct}:c)); }
+        const referrer = clients.find(c=>referralCode(c)===String(f.referral_code).trim().toUpperCase() && c.phone!==f.phone);
+        if(referrer){ await sbUpdate("gs_clients","id",referrer.id,{referral_pct_pending:settings.referral_pct, referral_discount_value:settings.referral_pct, referral_discount_type:'percent', referral_status:'active'}); setClients(p=>p.map(c=>c.id===referrer.id?{...c,referral_pct_pending:settings.referral_pct, referral_discount_value:settings.referral_pct, referral_discount_type:'percent', referral_status:'active'}:c)); }
       }
-      // consume own pending discount
-      if(exists && exists.referral_pct_pending){ await sbUpdate("gs_clients","id",exists.id,{referral_pct_pending:0}); setClients(p=>p.map(c=>c.id===exists.id?{...c,referral_pct_pending:0}:c)); }
+      // consume own pending discount (rabat wykorzystany w tej ofercie -> kod "zrealizowany")
+      if(exists && (exists.referral_pct_pending || exists.referral_discount_value)){ await sbUpdate("gs_clients","id",exists.id,{referral_pct_pending:0, referral_discount_value:0, referral_status:'used'}); setClients(p=>p.map(c=>c.id===exists.id?{...c,referral_pct_pending:0, referral_discount_value:0, referral_status:'used'}:c)); }
       // redeem voucher
       if(f.voucher_code){
         const v = vouchers.find(v=>v.code===String(f.voucher_code).trim().toUpperCase());
@@ -1289,6 +1426,12 @@ function Raport({offers,equipment,settings,packages,clients,vouchers,costs}){
         {m.bestRev>0 && <div style={{fontSize:11,color:"#9a6b00",marginTop:3}}>🏆 Najlepszy: {m.bestName} ({fmt(m.bestRev)})</div>}
       </div>))}
       <div className="muted" style={{fontSize:11,marginTop:10}}>Koszty edytujesz w Ustawienia → Koszty stałe. Koszt zakupu sprzętu edytujesz przy każdej pozycji w Ustawienia → Sprzęt.</div>
+      <h3 style={{fontSize:12,color:"var(--muted)",textTransform:"uppercase",margin:"18px 0 8px"}}>Polecenia i promocje</h3>
+      <div className="grid row2" style={{marginBottom:10}}>
+        <div className="card stat"><div className="v">{clients.filter(c=>c.referral_status==="used").length}</div><div className="l">Klientów, którzy wykorzystali rabat z polecenia</div></div>
+        <div className="card stat"><div className="v">{clients.filter(c=>(c.referral_pct_pending>0||c.referral_discount_value>0)&&c.referral_status!=="used").length}</div><div className="l">Aktywnych, niewykorzystanych rabatów</div></div>
+      </div>
+      <div className="card stat" style={{marginBottom:10}}><div className="v">{vouchers.filter(v=>v.redeemed).length} / {vouchers.length}</div><div className="l">Voucherów wykorzystanych / wystawionych</div></div>
     </div>
   );
 }
@@ -1393,6 +1536,10 @@ function Ustawienia({settings,setSettings,equipment,setEquipment,packages,setPac
         <div className="row2" style={{marginBottom:8}}>
           <div><label>Zadatek przy rezerwacji (zł)</label><input type="number" defaultValue={settings.zadatek} onBlur={ev=>saveSettings({zadatek:+ev.target.value||0})}/></div>
           <div><label>Rabat za polecenie (%)</label><input type="number" defaultValue={settings.referral_pct} onBlur={ev=>saveSettings({referral_pct:+ev.target.value||0})}/></div>
+        </div>
+        <div className="field"><label>Treść wiadomości z kodem polecenia (WhatsApp)</label>
+          <textarea rows="4" defaultValue={settings.referral_msg_template||'🌿 GardenSpa — Twój kod polecenia: {kod}\n\nPoleć nas znajomym! Gdy skorzystają z wynajmu i podadzą ten kod, Ty otrzymasz {procent}% rabatu na kolejny wynajem 🛁🔥'} onBlur={ev=>saveSettings({referral_msg_template:ev.target.value})}/>
+          <div className="muted" style={{fontSize:11,marginTop:4}}>Użyj {"{kod}"} i {"{procent}"} — zostaną zastąpione danymi klienta.</div>
         </div>
         <div className="field"><label>Ważność oferty</label>
           <div style={{display:"flex",gap:6,marginBottom:6}}>
