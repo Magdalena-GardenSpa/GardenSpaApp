@@ -1438,6 +1438,7 @@ function Raport({offers,equipment,settings,packages,clients,vouchers,costs}){
 
 /* ================= USTAWIENIA ================= */
 function Ustawienia({settings,setSettings,equipment,setEquipment,packages,setPackages,tiers,setTiers,costs,setCosts,flash,setErr,reload}){
+  const [mod,setMod]=useState(null);
   const saveSettings = async (patch) => {
     try{ await sbUpdate("gs_settings","id",1,patch); setSettings(p=>({...p,...patch})); flash("Zapisano ustawienia."); }
     catch(ex){ setErr(String(ex.message||ex)); }
@@ -1456,10 +1457,47 @@ function Ustawienia({settings,setSettings,equipment,setEquipment,packages,setPac
   const addCost = async () => { try{ const ins = await sbInsert("gs_costs",{name:"Nowy koszt",amount:0,period:"monthly"}); setCosts(p=>[...p,ins[0]]); }catch(ex){setErr(String(ex.message||ex));} };
   const delCost = async (id) => { try{ await sbDelete("gs_costs",id); setCosts(p=>p.filter(c=>c.id!==id)); }catch(ex){setErr(String(ex.message||ex));} };
 
+  const MODULES = [
+    ["equipment","🛁","Sprzęt",`${equipment.length} pozycji`,"base"],
+    ["costs","💰","Koszty stałe",`${costs.length} pozycji`,"base"],
+    ["transport","🚐","Transport","km w cenie i stawka","base"],
+    ["payments","💳","Płatności","zadatek, BLIK","base"],
+    ["packages","🎁","Pakiety / dodatki",`${packages.length} pozycji`,"marketing"],
+    ["tiers","✨","Warianty ofertowe",`${tiers.length} warianty`,"marketing"],
+    ["promo","🎟️","Kody promocyjne / polecenia","rabat, wiadomość, ważność","marketing"],
+  ];
+  const GROUPS = [["base","⚙️ Ustawienia bazowe"],["marketing","📣 Marketing i sprzedaż"]];
+
+  if(!mod){
+    return (
+      <div>
+        <div className="topbar"><div><h1>Ustawienia</h1><p>Sprzęt, pakiety, ceny</p></div></div>
+        {GROUPS.map(([gk,gl])=>(
+          <div key={gk} style={{marginBottom:18}}>
+            <h3 style={{fontSize:12,color:"var(--muted)",textTransform:"uppercase",marginBottom:8}}>{gl}</h3>
+            <div className="grid" style={{gap:10}}>
+              {MODULES.filter(m=>m[4]===gk).map(([k,ic,label,sub])=>(
+                <div key={k} className="card" style={{display:"flex",alignItems:"center",gap:12,cursor:"pointer"}} onClick={()=>setMod(k)}>
+                  <span style={{fontSize:22}}>{ic}</span>
+                  <div style={{flex:1}}><b>{label}</b><div className="muted" style={{fontSize:12}}>{sub}</div></div>
+                  <span className="muted">›</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  const modLabel = MODULES.find(m=>m[0]===mod)[2];
+
   return (
     <div>
-      <div className="topbar"><div><h1>Ustawienia</h1><p>Sprzęt, pakiety, ceny</p></div></div>
+      <div className="topbar"><div><h1>Ustawienia</h1><p>{modLabel}</p></div></div>
+      <button className="btn ghost sm" style={{marginBottom:14}} onClick={()=>setMod(null)}>‹ Wszystkie ustawienia</button>
 
+      {mod==="equipment" && (<>
       <h3 style={{fontSize:12,color:"var(--muted)",textTransform:"uppercase",marginBottom:8}}>Sprzęt</h3>
       {equipment.map(e=>(<div key={e.id} className="card" style={{marginBottom:10}}>
         <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:8}}>
@@ -1485,7 +1523,9 @@ function Ustawienia({settings,setSettings,equipment,setEquipment,packages,setPac
         </div>
       </div>))}
       <button className="btn ghost" style={{marginBottom:20}} onClick={addEquip}>+ Dodaj sprzęt (np. druga sauna)</button>
+      </>)}
 
+      {mod==="packages" && (<>
       <h3 style={{fontSize:12,color:"var(--muted)",textTransform:"uppercase",marginBottom:8}}>Pakiety / dodatki</h3>
       {packages.map(p=>(<div key={p.id} className="card" style={{marginBottom:9}}>
         <div style={{display:"flex",gap:8,marginBottom:6}}>
@@ -1498,19 +1538,57 @@ function Ustawienia({settings,setSettings,equipment,setEquipment,packages,setPac
         </div>
       </div>))}
       <button className="btn ghost" style={{marginBottom:20}} onClick={addPkg}>+ Dodaj pakiet / dodatek</button>
+      </>)}
 
+      {mod==="tiers" && (<>
       <h3 style={{fontSize:12,color:"var(--muted)",textTransform:"uppercase",marginBottom:8}}>Warianty ofertowe</h3>
-      {tiers.map(t=>(<div key={t.id} className="card" style={{marginBottom:10}}>
-        <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:6}}>
-          <span>{t.emoji}</span><input style={{fontWeight:700,flex:1}} defaultValue={t.title} onBlur={ev=>updTier(t.id,{title:ev.target.value})}/>
+      {tiers.map(t=>(
+        <details key={t.id} className="card" style={{marginBottom:10}}>
+          <summary style={{cursor:"pointer",fontWeight:700,display:"flex",alignItems:"center",gap:8}}><span>{t.emoji}</span>{t.title}</summary>
+          <div style={{marginTop:10}}>
+            <div className="field"><input placeholder="nazwa" defaultValue={t.title} onBlur={ev=>updTier(t.id,{title:ev.target.value})}/></div>
+            <div className="field"><input placeholder="podtytuł" defaultValue={t.subtitle} onBlur={ev=>updTier(t.id,{subtitle:ev.target.value})}/></div>
+            <div className="field"><textarea placeholder="co zawiera" defaultValue={t.perks} onBlur={ev=>updTier(t.id,{perks:ev.target.value})}/></div>
+            <label style={{cursor:"pointer"}} onClick={()=>updTier(t.id,{show_upsell:!t.show_upsell})}>{t.show_upsell?"☑":"☐"} Pokaż podpowiedź / zachętę (upsell)</label>
+            {t.show_upsell && <textarea placeholder="treść zachęty" defaultValue={t.upsell_text} onBlur={ev=>updTier(t.id,{upsell_text:ev.target.value})}/>}
+          </div>
+        </details>
+      ))}
+      <details className="card">
+        <summary style={{cursor:"pointer",fontWeight:700}}>⏳ Ważność oferty</summary>
+        <div style={{marginTop:10}}>
+          <div style={{display:"flex",gap:6,marginBottom:6}}>
+            {[["hours","Godziny"],["days","Dni"],["until_date","Do daty"]].map(([v,l])=>(
+              <span key={v} className={"chip"+(settings.offer_valid_mode===v?" on":"")} onClick={()=>saveSettings({offer_valid_mode:v})}>{l}</span>
+            ))}
+          </div>
+          {settings.offer_valid_mode==='until_date'
+            ? <input type="date" defaultValue={settings.offer_valid_date} onBlur={ev=>saveSettings({offer_valid_date:ev.target.value})}/>
+            : <input type="number" defaultValue={settings.offer_valid_value} onBlur={ev=>saveSettings({offer_valid_value:+ev.target.value||0})} placeholder={settings.offer_valid_mode==='days'?'liczba dni':'liczba godzin'}/>}
         </div>
-        <div className="field"><input placeholder="podtytuł" defaultValue={t.subtitle} onBlur={ev=>updTier(t.id,{subtitle:ev.target.value})}/></div>
-        <div className="field"><textarea placeholder="co zawiera" defaultValue={t.perks} onBlur={ev=>updTier(t.id,{perks:ev.target.value})}/></div>
-        <label style={{cursor:"pointer"}} onClick={()=>updTier(t.id,{show_upsell:!t.show_upsell})}>{t.show_upsell?"☑":"☐"} Pokaż podpowiedź / zachętę (upsell)</label>
-        {t.show_upsell && <textarea placeholder="treść zachęty" defaultValue={t.upsell_text} onBlur={ev=>updTier(t.id,{upsell_text:ev.target.value})}/>}
-      </div>))}
+      </details>
+      </>)}
 
-      <h3 style={{fontSize:12,color:"var(--muted)",textTransform:"uppercase",margin:"20px 0 8px"}}>Koszty stałe (do raportu)</h3>
+      {mod==="promo" && (<>
+      <h3 style={{fontSize:12,color:"var(--muted)",textTransform:"uppercase",marginBottom:8}}>Kody promocyjne / polecenia</h3>
+      <details className="card" open>
+        <summary style={{cursor:"pointer",fontWeight:700}}>🎟️ Rabat i wiadomość</summary>
+        <div style={{marginTop:10}}>
+          <div className="field"><label>Rabat za polecenie (%)</label><input type="number" defaultValue={settings.referral_pct} onBlur={ev=>saveSettings({referral_pct:+ev.target.value||0})}/></div>
+          <div className="field"><label>Treść wiadomości z kodem polecenia (WhatsApp)</label>
+            <textarea rows="4" defaultValue={settings.referral_msg_template||'🌿 GardenSpa — Twój kod polecenia: {kod}\n\nPoleć nas znajomym! Gdy skorzystają z wynajmu i podadzą ten kod, Ty otrzymasz {procent}% rabatu na kolejny wynajem 🛁🔥'} onBlur={ev=>saveSettings({referral_msg_template:ev.target.value})}/>
+            <div className="muted" style={{fontSize:11,marginTop:4}}>Użyj {"{kod}"} i {"{procent}"} — zostaną zastąpione danymi klienta.</div>
+          </div>
+        </div>
+      </details>
+      <details className="card">
+        <summary style={{cursor:"pointer",fontWeight:700}}>⏳ Ważność kodu</summary>
+        <div className="muted" style={{fontSize:12,marginTop:8}}>Każdy kod ma własny termin ważności — ustawiasz go indywidualnie przy kliencie (zakładka Klienci → 🎁 Kod polecenia → "Kod ważny do").</div>
+      </details>
+      </>)}
+
+      {mod==="costs" && (<>
+      <h3 style={{fontSize:12,color:"var(--muted)",textTransform:"uppercase",margin:"0 0 8px"}}>Koszty stałe (do raportu)</h3>
       {costs.map(c=>(<div key={c.id} className="card" style={{marginBottom:9}}>
         <div style={{display:"flex",gap:8,marginBottom:6}}>
           <input style={{fontWeight:700,flex:1}} defaultValue={c.name} onBlur={ev=>updCost(c.id,{name:ev.target.value})}/>
@@ -1524,36 +1602,24 @@ function Ustawienia({settings,setSettings,equipment,setEquipment,packages,setPac
         </div>
       </div>))}
       <button className="btn ghost" style={{marginBottom:20}} onClick={addCost}>+ Dodaj koszt</button>
+      </>)}
 
+      {mod==="transport" && (<>
       <h3 style={{fontSize:12,color:"var(--muted)",textTransform:"uppercase",marginBottom:8}}>Transport</h3>
-      <div className="card row2" style={{marginBottom:20}}>
+      <div className="card row2">
         <div><label>Darmowe km (w 1 stronę)</label><input type="number" defaultValue={settings.free_km} onBlur={ev=>saveSettings({free_km:+ev.target.value||0})}/></div>
         <div><label>Zł / km powyżej</label><input type="number" defaultValue={settings.km_rate} onBlur={ev=>saveSettings({km_rate:+ev.target.value||0})}/></div>
       </div>
+      </>)}
 
-      <h3 style={{fontSize:12,color:"var(--muted)",textTransform:"uppercase",marginBottom:8}}>Płatności i polecenia</h3>
+      {mod==="payments" && (<>
+      <h3 style={{fontSize:12,color:"var(--muted)",textTransform:"uppercase",marginBottom:8}}>Płatności</h3>
       <div className="card">
-        <div className="row2" style={{marginBottom:8}}>
-          <div><label>Zadatek przy rezerwacji (zł)</label><input type="number" defaultValue={settings.zadatek} onBlur={ev=>saveSettings({zadatek:+ev.target.value||0})}/></div>
-          <div><label>Rabat za polecenie (%)</label><input type="number" defaultValue={settings.referral_pct} onBlur={ev=>saveSettings({referral_pct:+ev.target.value||0})}/></div>
-        </div>
-        <div className="field"><label>Treść wiadomości z kodem polecenia (WhatsApp)</label>
-          <textarea rows="4" defaultValue={settings.referral_msg_template||'🌿 GardenSpa — Twój kod polecenia: {kod}\n\nPoleć nas znajomym! Gdy skorzystają z wynajmu i podadzą ten kod, Ty otrzymasz {procent}% rabatu na kolejny wynajem 🛁🔥'} onBlur={ev=>saveSettings({referral_msg_template:ev.target.value})}/>
-          <div className="muted" style={{fontSize:11,marginTop:4}}>Użyj {"{kod}"} i {"{procent}"} — zostaną zastąpione danymi klienta.</div>
-        </div>
-        <div className="field"><label>Ważność oferty</label>
-          <div style={{display:"flex",gap:6,marginBottom:6}}>
-            {[["hours","Godziny"],["days","Dni"],["until_date","Do daty"]].map(([v,l])=>(
-              <span key={v} className={"chip"+(settings.offer_valid_mode===v?" on":"")} onClick={()=>saveSettings({offer_valid_mode:v})}>{l}</span>
-            ))}
-          </div>
-          {settings.offer_valid_mode==='until_date'
-            ? <input type="date" defaultValue={settings.offer_valid_date} onBlur={ev=>saveSettings({offer_valid_date:ev.target.value})}/>
-            : <input type="number" defaultValue={settings.offer_valid_value} onBlur={ev=>saveSettings({offer_valid_value:+ev.target.value||0})} placeholder={settings.offer_valid_mode==='days'?'liczba dni':'liczba godzin'}/>}
-        </div>
+        <div className="field"><label>Zadatek przy rezerwacji (zł)</label><input type="number" defaultValue={settings.zadatek} onBlur={ev=>saveSettings({zadatek:+ev.target.value||0})}/></div>
         <div className="field"><label>Numer telefonu do BLIK (zadatek)</label><input defaultValue={settings.blik_phone} onBlur={ev=>saveSettings({blik_phone:ev.target.value})}/></div>
-        <div className="muted" style={{fontSize:11}}>Kaucja zwrotna ustawiasz osobno dla każdego sprzętu powyżej.</div>
+        <div className="muted" style={{fontSize:11}}>Kaucja zwrotna ustawiasz osobno dla każdego sprzętu w module "Sprzęt".</div>
       </div>
+      </>)}
     </div>
   );
 }
