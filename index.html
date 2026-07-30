@@ -231,9 +231,9 @@ function reviewDraftOptions(name, city, equipName, equipType, addonNames, vouche
   return pool.map(t=>({t,r:Math.random()})).sort((a,b)=>a.r-b.r).map(x=>x.t).slice(0,3);
 }
 
-function offerMsg(o, name, settings, equipment, packages, tiers){
+function offerMsg(o, name, settings, equipment, packages, tiers, clients, vouchers){
   const eq = equipment.find(e=>e.id===o.equipment_id) || {};
-  const calc = computeCalc(o, equipment, settings, packages, [], []);
+  const calc = computeCalc(o, equipment, settings, packages, clients||[], vouchers||[]);
   let addonNames = (o.addon_ids||[]).filter(id=>id!=='p1' && id!=='p7').map(id=>(packages.find(p=>p.id===id)||{}).name).filter(Boolean);
   const greet = name ? `Dzień dobry ${name}!` : 'Dzień dobry!';
   const useTier = o.use_tier !== false;
@@ -253,15 +253,19 @@ function offerMsg(o, name, settings, equipment, packages, tiers){
   const customNames = (o.custom_items||[]).filter(c=>c.label).map(c=>`${c.label} (${fmt(c.price)})`);
   const customLine = customNames.length ? `\nDodatkowe ustalenia: ${customNames.join(', ')}.` : '';
   const payableNow = calc.total - calc.deposit;
-  const altLines = (o.alt_options||[]).map(a=>{
-    const c2 = computeCalc({...o, mode:a.mode, qty:a.qty||1}, equipment, settings, packages, [], []);
+  const hasOverride = o.rate_override!=null && o.rate_override!=='';
+  const altLines = hasOverride ? [] : (o.alt_options||[]).map(a=>{
+    const c2 = computeCalc({...o, mode:a.mode, qty:a.qty||1}, equipment, settings, packages, clients||[], vouchers||[]);
     return `• ${tierLabel(tiers, a.mode, a.qty||1)}: ${fmt(c2.total - c2.deposit)}`;
   });
   const altBlock = altLines.length ? `\n\nInne opcje do wyboru:\n${altLines.join('\n')}` : '';
   if(nudge && altBlock) nudge = '\n' + nudge.trimStart();
   const headLine = useTier ? `${eq.name}${setLine} — ${tier}` : `${eq.name}${setLine} — ${o.qty>1?o.qty+' doby':'1 doba'}`;
   const extrasLine = extras ? `\n${extras}.` : '';
-  return `${greet} Oto Twoja oferta GardenSpa 🌿🛁\n${headLine}${extrasLine}${customLine}\nWynajem: ${fmt(payableNow)} (w tym zadatek ${fmt(calc.zadatek)} przy rezerwacji).\nDodatkowo kaucja zwrotna: ${fmt(calc.deposit)} płatna w dniu wynajmu.${altBlock}${nudge}\n💳 Zadatek szybko przez BLIK na numer: ${settings.blik_phone||''}.\n📅 Terminy znikają szybko — odpisz, żeby zarezerwować ten! Kod polecenia dla znajomych: ${referralCode(o.phone)} — ${settings.referral_pct||0}% zniżki dla Ciebie na kolejny wynajem.`;
+  const zadShown = Math.min(calc.zadatek, payableNow);
+  const zadClause = zadShown>0 ? (zadShown<payableNow ? ` (w tym zadatek ${fmt(zadShown)} przy rezerwacji)` : ` — płatne przy rezerwacji`) : '';
+  const refLine = o.phone ? ` Kod polecenia dla znajomych: ${referralCode(o.phone)} — ${settings.referral_pct||0}% zniżki dla Ciebie na kolejny wynajem.` : '';
+  return `${greet} Oto Twoja oferta GardenSpa 🌿🛁\n${headLine}${extrasLine}${customLine}\nWynajem: ${fmt(payableNow)}${zadClause}.\nDodatkowo kaucja zwrotna: ${fmt(calc.deposit)} płatna w dniu wynajmu.${altBlock}${nudge}\n💳 Zadatek szybko przez BLIK na numer: ${settings.blik_phone||''}.\n📅 Terminy znikają szybko — odpisz, żeby zarezerwować ten!${refLine}`;
 }
 
 /* ================= APP ================= */
@@ -303,7 +307,7 @@ function App(){
       if(p.status==="fulfilled") setPackages(p.value);
       if(t.status==="fulfilled") setTiers(t.value);
       if(c.status==="fulfilled") setClients(c.value);
-      if(o.status==="fulfilled") setOffers((o.value||[]).map(x=>({...x, addon_ids:x.addon_ids||[], extra_equip_ids:x.extra_equip_ids||[], custom_items:x.custom_items||[], alt_options:x.alt_options||[]})));
+      if(o.status==="fulfilled") setOffers((o.value||[]).map(x=>({...x, addon_ids:x.addon_ids||[], extra_equip_ids:x.extra_equip_ids||[], custom_items:x.custom_items||[], alt_options:x.alt_options||[], set_prices:x.set_prices||{}})));
       if(v.status==="fulfilled") setVouchers(v.value);
       if(r.status==="fulfilled") setReviews(r.value);
       if(co.status==="fulfilled") setCosts(co.value);
@@ -891,7 +895,7 @@ function OfferFormModal({onClose, initial, equipment, packages, tiers, clients, 
           <div className="calc-total"><span>RAZEM</span><span>{fmt(calc.total)}</span></div>
         </div>
         <label style={{marginTop:12}}>Podgląd SMS</label>
-        <div className="card" style={{fontSize:12.5,whiteSpace:"pre-wrap",background:"#faf9f5"}}>{offerMsg(f,f.name,settings,equipment,packages,tiers)}</div>
+        <div className="card" style={{fontSize:12.5,whiteSpace:"pre-wrap",background:"#faf9f5"}}>{offerMsg(f,f.name,settings,equipment,packages,tiers,clients,vouchers)}</div>
         </>
         )}
         <div className="modal-actions">
@@ -977,7 +981,7 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
 
   const openShare = (o, kind) => {
     const c = clients.find(c=>c.phone===o.phone);
-    const text = offerMsg(o,(c&&c.name)||o.name,settings,equipment,packages,tiers);
+    const text = offerMsg(o,(c&&c.name)||o.name,settings,equipment,packages,tiers,clients,vouchers);
     let url;
     if(kind==="wa") url = `https://wa.me/${waPhone(o.phone)}?text=${encodeURIComponent(text)}`;
     else if(kind==="sms") url = `sms:${o.phone.replace(/\s/g,"")}?body=${encodeURIComponent(text)}`;
@@ -1011,7 +1015,10 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
       const status = mode==="log_done" ? "done" : mode==="mark_accepted" ? "accepted" : "draft";
       const body = { phone:f.phone, name:f.name, equipment_id:f.equipment_id, mode:f.mode, qty:f.qty, km:f.km,
         addon_ids:f.addon_ids, extra_equip_ids:f.extra_equip_ids, custom_items:f.custom_items,
-        use_tier: f.use_tier!==false, alt_options: f.alt_options||[],
+        use_tier: f.use_tier!==false, alt_options: f.alt_options||[], set_prices: f.set_prices||{},
+        referral_code: f.referral_code||"", apply_client_discount: f.apply_client_discount!==false,
+        discount_type_override: f.discount_type_override||null,
+        discount_value_override: (f.discount_value_override===""||f.discount_value_override==null)?null:+f.discount_value_override,
         rate_override: f.rate_override===""?null:+f.rate_override, transport_override: f.transport_override===""?null:+f.transport_override,
         zadatek_override: f.zadatek_override===""?null:+f.zadatek_override, deposit_override: f.deposit_override===""?null:+f.deposit_override,
         voucher_code:f.voucher_code, offer_cost:f.offer_cost, year:f.year, month:f.month, day:f.day, days:f.days||f.qty||1, delivery_address:f.delivery_address||"", deposit_returned:!!f.deposit_returned };
