@@ -234,19 +234,34 @@ function reviewDraftOptions(name, city, equipName, equipType, addonNames, vouche
 function offerMsg(o, name, settings, equipment, packages, tiers){
   const eq = equipment.find(e=>e.id===o.equipment_id) || {};
   const calc = computeCalc(o, equipment, settings, packages, [], []);
-  const addonNames = (o.addon_ids||[]).filter(id=>id!=='p1' && id!=='p7').map(id=>(packages.find(p=>p.id===id)||{}).name).filter(Boolean);
+  let addonNames = (o.addon_ids||[]).filter(id=>id!=='p1' && id!=='p7').map(id=>(packages.find(p=>p.id===id)||{}).name).filter(Boolean);
   const greet = name ? `Dzień dobry ${name}!` : 'Dzień dobry!';
-  const tierData = (tiers||[]).find(t=>t.mode===o.mode) || {};
+  const useTier = o.use_tier !== false;
+  const tierData = useTier ? ((tiers||[]).find(t=>t.mode===o.mode) || {}) : {};
   const tier = tierLabel(tiers, o.mode, o.qty);
-  let extras = tierData.perks || 'W prezencie od nas: pierwszy worek drewna na rozpalenie 🔥 i światełka na klimat ✨';
-  if(addonNames.length) extras += ', a do tego: ' + addonNames.join(', ');
-  let nudge = tierData.show_upsell && tierData.upsell_text ? ` ${tierData.upsell_text}` : '';
+  let extras = useTier ? (tierData.perks || 'W prezencie od nas: pierwszy worek drewna na rozpalenie 🔥 i światełka na klimat ✨') : '';
+  const norm = s => String(s||'').toLowerCase().replace(/[^a-ząćęłńóśźż ]+/g,' ');
+  const extrasNorm = norm(extras);
+  addonNames = addonNames.filter(n=>{
+    const words = norm(n).split(/\s+/).filter(w=>w.length>4);
+    return !words.some(w=>extrasNorm.includes(w));
+  });
+  if(addonNames.length) extras = extras ? extras + ', a do tego: ' + addonNames.join(', ') : 'W cenie: ' + addonNames.join(', ');
+  let nudge = useTier && tierData.show_upsell && tierData.upsell_text ? ` ${tierData.upsell_text}` : '';
   const extraNames = (calc.extraEquip||[]).map(e=>e.name);
   const setLine = extraNames.length ? ` + zestaw z: ${extraNames.join(', ')}` : '';
   const customNames = (o.custom_items||[]).filter(c=>c.label).map(c=>`${c.label} (${fmt(c.price)})`);
   const customLine = customNames.length ? `\nDodatkowe ustalenia: ${customNames.join(', ')}.` : '';
   const payableNow = calc.total - calc.deposit;
-  return `${greet} Oto Twoja oferta GardenSpa 🌿🛁\n${eq.name}${setLine} — ${tier}\n${extras}.${customLine}\nWynajem: ${fmt(payableNow)} (w tym zadatek ${fmt(calc.zadatek)} przy rezerwacji).\nDodatkowo kaucja zwrotna: ${fmt(calc.deposit)} płatna w dniu wynajmu.${nudge}\n💳 Zadatek szybko przez BLIK na numer: ${settings.blik_phone||''}.\n📅 Terminy znikają szybko — odpisz, żeby zarezerwować ten! Kod polecenia dla znajomych: ${referralCode(o.phone)} — ${settings.referral_pct||0}% zniżki dla Ciebie na kolejny wynajem.`;
+  const altLines = (o.alt_options||[]).map(a=>{
+    const c2 = computeCalc({...o, mode:a.mode, qty:a.qty||1}, equipment, settings, packages, [], []);
+    return `• ${tierLabel(tiers, a.mode, a.qty||1)}: ${fmt(c2.total - c2.deposit)}`;
+  });
+  const altBlock = altLines.length ? `\n\nInne opcje do wyboru:\n${altLines.join('\n')}` : '';
+  if(nudge && altBlock) nudge = '\n' + nudge.trimStart();
+  const headLine = useTier ? `${eq.name}${setLine} — ${tier}` : `${eq.name}${setLine} — ${o.qty>1?o.qty+' doby':'1 doba'}`;
+  const extrasLine = extras ? `\n${extras}.` : '';
+  return `${greet} Oto Twoja oferta GardenSpa 🌿🛁\n${headLine}${extrasLine}${customLine}\nWynajem: ${fmt(payableNow)} (w tym zadatek ${fmt(calc.zadatek)} przy rezerwacji).\nDodatkowo kaucja zwrotna: ${fmt(calc.deposit)} płatna w dniu wynajmu.${altBlock}${nudge}\n💳 Zadatek szybko przez BLIK na numer: ${settings.blik_phone||''}.\n📅 Terminy znikają szybko — odpisz, żeby zarezerwować ten! Kod polecenia dla znajomych: ${referralCode(o.phone)} — ${settings.referral_pct||0}% zniżki dla Ciebie na kolejny wynajem.`;
 }
 
 /* ================= APP ================= */
@@ -288,7 +303,7 @@ function App(){
       if(p.status==="fulfilled") setPackages(p.value);
       if(t.status==="fulfilled") setTiers(t.value);
       if(c.status==="fulfilled") setClients(c.value);
-      if(o.status==="fulfilled") setOffers((o.value||[]).map(x=>({...x, addon_ids:x.addon_ids||[], extra_equip_ids:x.extra_equip_ids||[], custom_items:x.custom_items||[]})));
+      if(o.status==="fulfilled") setOffers((o.value||[]).map(x=>({...x, addon_ids:x.addon_ids||[], extra_equip_ids:x.extra_equip_ids||[], custom_items:x.custom_items||[], alt_options:x.alt_options||[]})));
       if(v.status==="fulfilled") setVouchers(v.value);
       if(r.status==="fulfilled") setReviews(r.value);
       if(co.status==="fulfilled") setCosts(co.value);
@@ -634,7 +649,7 @@ function BroadcastModal({clients,filtered,onClose}){
 
 /* ================= OFERTY ================= */
 function emptyForm(settings){
-  return { phone:"", name:"", equipment_id:"", mode:"day", qty:1, km:10, addon_ids:[], extra_equip_ids:[], custom_items:[],
+  return { phone:"", name:"", equipment_id:"", mode:"day", qty:1, km:10, addon_ids:[], extra_equip_ids:[], custom_items:[], use_tier:true, alt_options:[],
     rate_override:"", transport_override:"", zadatek_override:"", deposit_override:"", voucher_code:"", offer_cost:0, set_prices:{},
     year:new Date().getFullYear(), month:new Date().getMonth(), day:new Date().getDate(), days:1, status:"draft" };
 }
@@ -781,7 +796,7 @@ function OfferFormModal({onClose, initial, equipment, packages, tiers, clients, 
             {equipment.map(e=>(<option key={e.id} value={e.id}>{e.name}{e.capacity?" ("+e.capacity+")":""}</option>))}
           </select>
         </div>
-        <label>Wybierz wariant</label>
+        <label>Wariant (opcjonalny)</label>
         <div className="row3" style={{marginBottom:10}}>
           {tiers.map(t=>{ const sel = f.mode===t.mode;
             return (<div key={t.id} className="card" style={{cursor:"pointer",borderColor:sel?"var(--green)":"var(--line)",background:sel?"var(--green-l)":"#fff",padding:12}} onClick={()=>set("mode",t.mode)}>
@@ -790,8 +805,21 @@ function OfferFormModal({onClose, initial, equipment, packages, tiers, clients, 
               <div style={{fontWeight:700,color:"var(--green-d)"}}>{fmt(rate(t.mode))}{t.mode==='day'?" / doba":""}</div>
             </div>); })}
         </div>
-        {(()=>{ const activeTier = tiers.find(t=>t.mode===f.mode); return activeTier && activeTier.show_upsell && activeTier.upsell_text ?
+        <label style={{cursor:"pointer",display:"block",marginBottom:8}} onClick={()=>set("use_tier", f.use_tier===false)}>{f.use_tier===false?"☐":"☑"} Dołącz opis wariantu do oferty (tytuł, gratisy, zachęta)</label>
+        {f.use_tier!==false && (()=>{ const activeTier = tiers.find(t=>t.mode===f.mode); return activeTier && activeTier.show_upsell && activeTier.upsell_text ?
           <div className="banner ok" style={{fontSize:12}}>💡 {activeTier.upsell_text}</div> : null; })()}
+        <label style={{marginTop:6}}>Dodatkowe opcje w ofercie (klient wybiera)</label>
+        <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>
+          {[{mode:'day',qty:1,l:'1 doba'},{mode:'day',qty:2,l:'2 doby'},{mode:'day',qty:3,l:'3 doby'},{mode:'weekend',qty:1,l:'Weekend'},{mode:'week',qty:1,l:'Tydzień'}].map(op=>{
+            const list = f.alt_options||[];
+            const on = list.some(a=>a.mode===op.mode && (a.qty||1)===op.qty);
+            const isCurrent = f.mode===op.mode && (+f.qty||1)===op.qty;
+            return <button key={op.mode+op.qty} type="button" className={"btn sm "+(on?"primary":"ghost")} disabled={isCurrent}
+              style={isCurrent?{opacity:.45}:null}
+              onClick={()=>set("alt_options", on ? list.filter(a=>!(a.mode===op.mode && (a.qty||1)===op.qty)) : [...list,{mode:op.mode,qty:op.qty}])}>
+              {op.l}{isCurrent?" (główna)":""}</button>;
+          })}
+        </div>
         <div className="row2">
           <div className="field"><label>Data rozpoczęcia</label><input type="date" value={`${f.year}-${String(f.month+1).padStart(2,'0')}-${String(f.day).padStart(2,'0')}`} onChange={e=>{ const [y,m,d]=e.target.value.split('-').map(Number); setF(p=>({...p,year:y,month:m-1,day:d})); }}/></div>
           <div className="field"><label>Ilość dób</label><input type="number" min="1" value={f.qty} onChange={e=>set("qty",+e.target.value||1)}/></div>
@@ -983,6 +1011,7 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
       const status = mode==="log_done" ? "done" : mode==="mark_accepted" ? "accepted" : "draft";
       const body = { phone:f.phone, name:f.name, equipment_id:f.equipment_id, mode:f.mode, qty:f.qty, km:f.km,
         addon_ids:f.addon_ids, extra_equip_ids:f.extra_equip_ids, custom_items:f.custom_items,
+        use_tier: f.use_tier!==false, alt_options: f.alt_options||[],
         rate_override: f.rate_override===""?null:+f.rate_override, transport_override: f.transport_override===""?null:+f.transport_override,
         zadatek_override: f.zadatek_override===""?null:+f.zadatek_override, deposit_override: f.deposit_override===""?null:+f.deposit_override,
         voucher_code:f.voucher_code, offer_cost:f.offer_cost, year:f.year, month:f.month, day:f.day, days:f.days||f.qty||1, delivery_address:f.delivery_address||"", deposit_returned:!!f.deposit_returned };
