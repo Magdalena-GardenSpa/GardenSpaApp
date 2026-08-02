@@ -130,6 +130,15 @@ const WEEKDAYS = ['Pn','Wt','Śr','Cz','Pt','So','Nd'];
 const COLOR_SWATCHES = ['#153826','#3a6350','#c9a227','#8a5a3b','#5b4b8a','#2f6f8f','#a13d3d'];
 const LOGO = "https://ugc.production.linktr.ee/dce7fc8e-f896-412b-b1b8-4a47ce1d35e5_1000001073.jpeg";
 
+function cityOnly(v){
+  if(!v) return "";
+  let s = String(v).split(",").pop().trim();
+  s = s.replace(/^(ul\.|ulica|al\.|os\.)\s*/i,"").replace(/\d{2}-\d{3}\s*/,"").trim();
+  const m = s.match(/\d+[a-zA-Z]?(\/\d+[a-zA-Z]?)?(?!.*\d)/);
+  if(m){ const after = s.slice(m.index+m[0].length).trim(); if(after) s = after; else { s = s.slice(0,m.index).replace(/\s*(ul\.|ulica|al\.|os\.)\s*$/i,"").trim(); } }
+  return s.replace(/^(ul\.|ulica|al\.|os\.)\s*/i,"").trim();
+}
+
 function isInProgress(o){
   if(!o || o.status==="draft" || o.status==="done") return false;
   const t=new Date(); const tN=t.getFullYear()*10000+t.getMonth()*100+t.getDate();
@@ -220,18 +229,20 @@ function tierLabel(tiers, mode, qty){
 }
 
 function reviewDraftOptions(name, city, equipName, equipType, addonNames, voucherUsed){
-  const who = name || 'Klient';
-  const miejsce = city ? ` (miejscowość: ${city})` : '';
+  if(!equipName) return [];
+  const firstName = name ? String(name).trim().split(/\s+/)[0] : '';
+  const who = firstName || 'My';
+  const miejsce = city ? ` z ${cityOnly(city)}` : '';
   const co = equipName || 'sprzęt';
   const typSlowo = equipType==='sauna' ? 'sauny' : equipType==='balia' ? 'balii' : 'sprzętu';
   const relaksSlowo = equipType==='sauna' ? 'porządne wygrzanie' : equipType==='balia' ? 'kąpiel pod chmurką' : 'relaks';
   const extra = addonNames && addonNames.length ? ` Skorzystaliśmy też z: ${addonNames.join(', ')}.` : '';
   const voucherLine = voucherUsed ? ' Korzystaliśmy z vouchera podarunkowego — świetny prezent, polecamy dla bliskich!' : '';
   const pool = [
-    `${who}${miejsce} — polecam! Wynajęliśmy: ${co} od GardenSpa. Świetna organizacja, czysto i profesjonalnie.${extra}${voucherLine}`,
-    `GardenSpa${miejsce} — mobilny wynajem ${typSlowo}: ${co}. Strzał w dziesiątkę na ${relaksSlowo}, zdecydowanie polecam każdemu, kto szuka relaksu blisko domu.${extra}`,
-    `Szukaliśmy oferty${miejsce} i trafiliśmy na GardenSpa (${co}) — punktualność, czystość i mega klimat. Na pewno wrócimy!${voucherLine}`,
-    `${who} tutaj${miejsce} 🙂 Wszystko dowiezione na czas, ${co} w idealnym stanie. Super sposób na ${relaksSlowo} bez wyjazdu.${extra}`,
+    `${who}${miejsce} — polecam! Wynajęliśmy ${co} od GardenSpa. Świetna organizacja, czysto i profesjonalnie.${extra}${voucherLine}`,
+    `GardenSpa — mobilny wynajem ${typSlowo}${miejsce}: ${co}. Strzał w dziesiątkę na ${relaksSlowo}, zdecydowanie polecam każdemu, kto szuka relaksu blisko domu.${extra}`,
+    `Szukaliśmy oferty${miejsce} i trafiliśmy na GardenSpa — ${co}: punktualność, czystość i mega klimat. Na pewno wrócimy!${voucherLine}`,
+    `Wszystko dowiezione na czas${miejsce}, ${co} w idealnym stanie. Super sposób na ${relaksSlowo} bez wyjazdu.${extra}`,
     `Nie spodziewaliśmy się takiego komfortu${miejsce}! GardenSpa i ${co} — pełen profesjonalizm od pierwszego kontaktu do odbioru.${voucherLine}`,
     `${co} od GardenSpa${miejsce} to była świetna decyzja — łatwa rezerwacja, miła obsługa, zero stresu.${extra} Chętnie polecimy znajomym.`,
     `Jeśli szukacie ${typSlowo}${miejsce} — GardenSpa i ${co} zdały egzamin na piątkę. Wracamy przy pierwszej okazji.${voucherLine}`,
@@ -715,8 +726,13 @@ function emptyForm(settings){
     year:new Date().getFullYear(), month:new Date().getMonth(), day:new Date().getDate(), days:1, status:"draft" };
 }
 
-function OfferFormModal({onClose, initial, equipment, packages, tiers, clients, settings, vouchers, onSave}){
+function OfferFormModal({onClose, initial, equipment, packages, tiers, clients, settings, vouchers, onSave, offers}){
   const [f,setF]=useState(initial);
+  const clientOptions = React.useMemo(()=>{
+    const lastAt = {};
+    (offers||[]).filter(o=>o.status!=="draft").forEach(o=>{ const n=o.year*10000+o.month*100+o.day; if(!lastAt[o.phone]||n>lastAt[o.phone]) lastAt[o.phone]=n; });
+    return [...clients].sort((a,b)=>(lastAt[b.phone]||0)-(lastAt[a.phone]||0) || String(a.name||"").localeCompare(String(b.name||"")));
+  },[clients,offers]);
   const [quick,setQuick]=useState(false);
   const [localErr,setLocalErr]=useState("");
   useEffect(()=>{ if(!f.equipment_id && equipment[0]) setF(p=>({...p,equipment_id:equipment[0].id})); },[equipment]);
@@ -844,14 +860,17 @@ function OfferFormModal({onClose, initial, equipment, packages, tiers, clients, 
           </>
         ) : (
         <>
-        <div className="row2">
-          <div className="field"><label>Telefon</label><input list="dl-phones" value={f.phone} onChange={e=>{const v=e.target.value; set("phone",v); const c=clients.find(x=>x.phone===v); if(c) setF(p=>({...p,phone:v,name:c.name||p.name}));}} placeholder="600 111 222"/>
-            <datalist id="dl-phones">{clients.map(c=><option key={c.id} value={c.phone}>{c.name}</option>)}</datalist>
-          </div>
-          <div className="field"><label>Imię i nazwisko</label><input list="dl-names" value={f.name} onChange={e=>{const v=e.target.value; set("name",v); const c=clients.find(x=>x.name===v); if(c) setF(p=>({...p,name:v,phone:c.phone||p.phone}));}}/>
-            <datalist id="dl-names">{clients.filter(c=>c.name).map(c=><option key={c.id} value={c.name}>{c.phone}</option>)}</datalist>
-          </div>
+        <div className="field"><label>Klient</label>
+          <select value={clients.some(c=>c.phone===f.phone)?f.phone:""} onChange={e=>{ const c=clients.find(x=>x.phone===e.target.value); if(c) setF(p=>({...p,phone:c.phone,name:c.name||"",delivery_address:p.delivery_address||c.city||""})); else setF(p=>({...p,phone:"",name:""})); }}>
+            <option value="">— nowy klient (wpisz poniżej) —</option>
+            {clientOptions.map(c=>(<option key={c.id} value={c.phone}>{displayName(c.phone,c.name)}{cityOnly(c.city)?" · "+cityOnly(c.city):""}</option>))}
+          </select>
         </div>
+        <div className="row2">
+          <div className="field"><label>Telefon</label><input value={f.phone} onChange={e=>set("phone",e.target.value)}/></div>
+          <div className="field"><label>Imię i nazwisko</label><input value={f.name} onChange={e=>set("name",e.target.value)}/></div>
+        </div>
+        <div className="field"><label>Miejscowość / adres dostawy</label><input value={f.delivery_address||""} onChange={e=>set("delivery_address",e.target.value)} placeholder="np. Oborniki"/></div>
         <div className="field"><label>Sprzęt</label>
           <select value={f.equipment_id} onChange={e=>set("equipment_id",e.target.value)}>
             {equipment.map(e=>(<option key={e.id} value={e.id}>{e.name}{e.capacity?" ("+e.capacity+")":""}</option>))}
@@ -881,8 +900,9 @@ function OfferFormModal({onClose, initial, equipment, packages, tiers, clients, 
               {op.l}{isCurrent?" (główna)":""}</button>;
           })}
         </div>
-        <div className="row2">
-          <div className="field"><label>Data rozpoczęcia</label><input type="date" value={`${f.year}-${String(f.month+1).padStart(2,'0')}-${String(f.day).padStart(2,'0')}`} onChange={e=>{ const [y,m,d]=e.target.value.split('-').map(Number); setF(p=>({...p,year:y,month:m-1,day:d})); }}/></div>
+        <div className="row3">
+          <div className="field"><label>Data od</label><input type="date" value={`${f.year}-${String(f.month+1).padStart(2,'0')}-${String(f.day).padStart(2,'0')}`} onChange={e=>{ const [y,m,d]=e.target.value.split('-').map(Number); setF(p=>({...p,year:y,month:m-1,day:d})); }}/></div>
+          <div className="field"><label>Data do</label><input type="date" value={(()=>{const e2=new Date(f.year,f.month,f.day+(+f.qty||1)-1); return `${e2.getFullYear()}-${String(e2.getMonth()+1).padStart(2,'0')}-${String(e2.getDate()).padStart(2,'0')}`;})()} onChange={e=>{ const [y,m,d]=e.target.value.split('-').map(Number); const end=new Date(y,m-1,d), start=new Date(f.year,f.month,f.day); const days=Math.max(1,Math.round((end-start)/86400000)+1); set("qty",days); }}/></div>
           <div className="field"><label>Ilość dób</label><input type="number" min="1" value={f.qty} onChange={e=>set("qty",+e.target.value||1)}/></div>
         </div>
         <div className="row2">
@@ -1052,8 +1072,13 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
       if(!f.phone){ setErr("Podaj numer telefonu klienta."); return; }
       const exists = clients.find(c=>c.phone===f.phone);
       let clientRow = exists;
-      if(!exists){ const ins = await sbInsert("gs_clients",{phone:f.phone,name:f.name||"",city:"",referral_pct_pending:0}); clientRow=ins[0]; setClients(p=>[clientRow,...p]); }
-      else if(f.name && !exists.name){ await sbUpdate("gs_clients","id",exists.id,{name:f.name}); setClients(p=>p.map(c=>c.id===exists.id?{...c,name:f.name}:c)); }
+      if(!exists){ const ins = await sbInsert("gs_clients",{phone:f.phone,name:f.name||"",city:f.delivery_address||"",referral_pct_pending:0}); clientRow=ins[0]; setClients(p=>[clientRow,...p]); }
+      else {
+        const patch={};
+        if(f.name && !exists.name) patch.name=f.name;
+        if(f.delivery_address && !exists.city) patch.city=f.delivery_address;
+        if(Object.keys(patch).length){ await sbUpdate("gs_clients","id",exists.id,patch); setClients(p=>p.map(c=>c.id===exists.id?{...c,...patch}:c)); }
+      }
       // referral reward
       if(f.referral_code){
         const referrer = clients.find(c=>referralCode(c)===String(f.referral_code).trim().toUpperCase() && c.phone!==f.phone);
@@ -1235,7 +1260,7 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
           </div>
         </div>); })}
 
-      {(modal==="new"||editingOffer) && <OfferFormModal onClose={()=>{setModal(null);setEditingOffer(null);}} initial={editingOffer||emptyForm(settings)} equipment={equipment} packages={packages} tiers={tiers} clients={clients} settings={settings} vouchers={vouchers} onSave={saveOffer}/>}
+      {(modal==="new"||editingOffer) && <OfferFormModal offers={offers} onClose={()=>{setModal(null);setEditingOffer(null);}} initial={editingOffer||emptyForm(settings)} equipment={equipment} packages={packages} tiers={tiers} clients={clients} settings={settings} vouchers={vouchers} onSave={saveOffer}/>}
       {modal && modal!=="new" && <OfferDetailModal offer={modal} onClose={()=>setModal(null)} equipment={equipment} packages={packages} tiers={tiers} clients={clients} settings={settings} vouchers={vouchers} onToggleZadatek={toggleZadatek} onEdit={()=>{setEditingOffer(modal);setModal(null);}} onDelete={()=>delOffer(modal)}/>}
       {voucherModal && <VoucherModal onClose={()=>setVoucherModal(false)} settings={settings} clients={clients} equipment={equipment} offers={offers} setOffers={setOffers} setErr={setErr} flash={flash} setVouchers={setVouchers}/>}
       {voucherEdit && <VoucherModal onClose={()=>setVoucherEdit(null)} initial={voucherEdit} settings={settings} clients={clients} equipment={equipment} offers={offers} setOffers={setOffers} setErr={setErr} flash={flash} setVouchers={setVouchers}/>}
@@ -1384,21 +1409,27 @@ function VoucherTermModal({voucher,onClose,equipment,clients,settings,setErr,fla
 }
 
 /* ================= OPINIE ================= */
-function ReviewModal({onClose,client,offers,equipment,packages,vouchers,settings,setReviews,flash,setErr}){
-  const lastOffer = client ? offers.filter(o=>o.phone===client.phone && o.status!=="draft").sort((a,b)=>(b.year*10000+b.month*100+b.day)-(a.year*10000+a.month*100+a.day))[0] : null;
-  const eq = lastOffer && equipment.find(e=>e.id===lastOffer.equipment_id);
-  const addonNames = lastOffer ? (lastOffer.addon_ids||[]).filter(id=>id!=="p1").map(id=>(packages.find(p=>p.id===id)||{}).name).filter(Boolean) : [];
-  const voucherUsed = lastOffer ? vouchers.some(v=>v.redeemed && v.buyer_phone===client.phone) : false;
+function ReviewModal({onClose,client,clients,offers,equipment,packages,vouchers,settings,setReviews,flash,setErr}){
   const [phone,setPhone]=useState(client?client.phone:"");
-  const [text,setText]=useState(`Dzień dobry${client&&client.name?" "+client.name:""}! Dziękujemy za skorzystanie z GardenSpa${eq?" po wynajmie "+eq.name.toLowerCase():""}${client&&client.city?" w "+client.city:""} 🌿 Macie 5 sekund? Odpiszcie nam oceną 1-5 ⭐ i jednym zdaniem, co Wam się podobało — to dla nas naprawdę dużo znaczy!`);
+  const sel = (clients||[]).find(c=>c.phone===phone) || client;
+  const clientOptions = React.useMemo(()=>{
+    const lastAt={}; (offers||[]).filter(o=>o.status!=="draft").forEach(o=>{ const n=o.year*10000+o.month*100+o.day; if(!lastAt[o.phone]||n>lastAt[o.phone]) lastAt[o.phone]=n; });
+    return [...(clients||[])].sort((a,b)=>(lastAt[b.phone]||0)-(lastAt[a.phone]||0) || String(a.name||"").localeCompare(String(b.name||"")));
+  },[clients,offers]);
+  const lastOffer = sel ? offers.filter(o=>o.phone===sel.phone && o.status!=="draft").sort((a,b)=>(b.year*10000+b.month*100+b.day)-(a.year*10000+a.month*100+a.day))[0] : null;
+  const eq = lastOffer && equipment.find(e=>e.id===lastOffer.equipment_id);
+  const addonNames = lastOffer ? (lastOffer.addon_ids||[]).map(id=>packages.find(p=>p.id===id)).filter(p=>p&&+p.price>0).map(p=>p.name) : [];
+  const voucherUsed = sel ? vouchers.some(v=>v.redeemed && v.buyer_phone===sel.phone) : false;
+  const [text,setText]=useState("");
+  useEffect(()=>{ setText(`Dzień dobry${sel&&sel.name?" "+sel.name.split(" ")[0]:""}! Dziękujemy za skorzystanie z GardenSpa${eq?" po wynajmie "+eq.name.toLowerCase():""}${sel&&sel.city?" w "+sel.city:""} 🌿 Masz 5 sekund? Odpisz nam oceną 1-5 ⭐ i jednym zdaniem, co Ci się podobało — to dla nas naprawdę dużo znaczy!`); },[phone, eq&&eq.id]);
   const [stars,setStars]=useState(5);
   const [reviewText,setReviewText]=useState("");
-  const drafts = useMemo(()=>reviewDraftOptions(client&&client.name, client&&client.city, eq&&eq.name, eq&&eq.type, addonNames, voucherUsed),[client]);
+  const drafts = useMemo(()=>reviewDraftOptions(sel&&sel.name, sel&&sel.city, eq&&eq.name, eq&&eq.type, addonNames, voucherUsed),[phone, eq&&eq.id]);
 
   const send = kind => { const url = kind==="wa" ? `https://wa.me/${waPhone(phone)}?text=${encodeURIComponent(text)}` : `sms:${phone.replace(/\s/g,"")}?body=${encodeURIComponent(text)}`; window.open(url,"_blank"); };
   const save = async ()=>{
     if(!reviewText){ onClose(); return; }
-    try{ const ins = await sbInsert("gs_reviews",{phone, name:(client&&client.name)||"", stars, text:reviewText, web:false, fb:false, ig:false});
+    try{ const ins = await sbInsert("gs_reviews",{phone, name:(sel&&sel.name)||"", stars, text:reviewText, web:false, fb:false, ig:false});
       setReviews(p=>[ins[0],...p]); flash("Zapisano opinię."); onClose(); }
     catch(ex){ setErr(String(ex.message||ex)); }
   };
@@ -1408,15 +1439,25 @@ function ReviewModal({onClose,client,offers,equipment,packages,vouchers,settings
       <div className="modal">
         <button className="close-x" onClick={onClose}>×</button>
         <h2>Poproś o opinię</h2>
-        <div className="field"><label>Telefon</label><input value={phone} onChange={e=>setPhone(e.target.value)} placeholder="600 111 222"/></div>
+        <div className="field"><label>Klient</label>
+          <select value={(clients||[]).some(c=>c.phone===phone)?phone:""} onChange={e=>setPhone(e.target.value)}>
+            <option value="">— wybierz klienta —</option>
+            {clientOptions.map(c=>(<option key={c.id} value={c.phone}>{displayName(c.phone,c.name)}{cityOnly(c.city)?" · "+cityOnly(c.city):""}</option>))}
+          </select>
+        </div>
+        <div className="field"><label>Telefon</label><input value={phone} onChange={e=>setPhone(e.target.value)}/></div>
         <div className="field"><label>Treść wiadomości</label><textarea value={text} onChange={e=>setText(e.target.value)}/></div>
         <div style={{display:"flex",gap:8,marginBottom:16}}>
           <button className="btn primary" onClick={()=>send("wa")}>🟢 WhatsApp</button>
           <button className="btn ghost" onClick={()=>send("sms")}>💬 SMS</button>
         </div>
         <hr style={{border:"none",borderTop:"1px dashed var(--line)",margin:"14px 0"}}/>
-        <label>Wpisano opinię klienta — wybierz ocenę i szkic (1 dotknięcie, gotowe pod wyszukiwanie)</label>
-        {drafts.map((d,i)=>(<div key={i} className="draft" onClick={()=>setReviewText(d)}>{d}</div>))}
+        {!sel || !eq ? (
+          <div className="muted" style={{fontSize:12.5,marginBottom:8}}>Wybierz klienta powyżej, żeby zobaczyć gotowe szkice opinii dopasowane do jego wynajmu.</div>
+        ) : (<>
+          <label>Wpisano opinię klienta — wybierz ocenę i szkic (1 dotknięcie, gotowe pod wyszukiwanie)</label>
+          {drafts.map((d,i)=>(<div key={i} className="draft" onClick={()=>setReviewText(d)}>{d}</div>))}
+        </>)}
         <div style={{display:"flex",gap:6,margin:"8px 0"}}>
           {[1,2,3,4,5].map(n=>(<span key={n} style={{fontSize:20,cursor:"pointer",color:n<=stars?"var(--gold)":"#ddd"}} onClick={()=>setStars(n)}>★</span>))}
         </div>
@@ -1450,7 +1491,7 @@ function Opinie({reviews,setReviews,clients,offers,equipment,packages,vouchers,f
           <span className={"chip"+(r.ig?" on":"")} onClick={()=>toggleChannel(r,"ig")}>Instagram {r.ig?"✓":""}</span>
         </div>
       </div>))}
-      {modal && <ReviewModal onClose={()=>setModal(null)} client={modal.phone?modal:null} offers={offers} equipment={equipment} packages={packages} vouchers={vouchers} settings={{}} setReviews={setReviews} flash={flash} setErr={setErr}/>}
+      {modal && <ReviewModal onClose={()=>setModal(null)} client={modal.phone?modal:null} clients={clients} offers={offers} equipment={equipment} packages={packages} vouchers={vouchers} settings={{}} setReviews={setReviews} flash={flash} setErr={setErr}/>}
     </div>
   );
 }
