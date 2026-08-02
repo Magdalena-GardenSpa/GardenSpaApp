@@ -425,7 +425,7 @@ function Pulpit({equipment,offers,clients,settings,setTab,vouchers,goOffer}){
   const tNum = today.getFullYear()*10000+today.getMonth()*100+today.getDate();
   const dateNum = o => o.year*10000+o.month*100+o.day;
   const endNum = o => { const d=new Date(o.year,o.month,o.day+((o.days||1))); return d.getFullYear()*10000+d.getMonth()*100+d.getDate(); };
-  const live = offers.filter(o=>o.status!=="draft");
+  const live = offers.filter(o=>o.status!=="draft" && o.status!=="done");
   const deliveriesToday = live.filter(o=>dateNum(o)===tNum);
   const pickupsToday = live.filter(o=>endNum(o)===tNum && dateNum(o)!==tNum);
   const inProgress = live.filter(o=>dateNum(o)<=tNum && endNum(o)>=tNum);
