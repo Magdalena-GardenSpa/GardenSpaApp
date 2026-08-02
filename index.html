@@ -1009,6 +1009,10 @@ function OfferFormModal({onClose, initial, equipment, packages, tiers, clients, 
             </select>
           </div>
         </div>
+        <div className="field"><label>Oferta ważna do (data i godzina)</label>
+          <input type="datetime-local" value={(()=>{ const d=f.expires_at?new Date(f.expires_at):new Date(computeExpiry(settings)); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}T${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; })()} onChange={e=>set("expires_at", e.target.value?new Date(e.target.value).toISOString():null)}/>
+          <div className="muted" style={{fontSize:11.5,marginTop:3}}>Domyślnie z Ustawień. Zmiana dotyczy tylko tej oferty.</div>
+        </div>
         {equipment.filter(e=>e.id!==f.equipment_id).length>0 && <>
           <label>Zestaw — dołącz dodatkowy sprzęt</label>
           <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:10}}>
@@ -1211,6 +1215,7 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
       if(f.id){
         const newStatus = f.status||"draft";
         const patch = {...body,status:newStatus};
+        if(f.expires_at) patch.expires_at = f.expires_at;
         if(newStatus==="done") patch.zadatek_paid = true;
         await sbUpdate("gs_offers","id",f.id,patch);
         setOffers(p=>p.map(x=>x.id===f.id?{...x,...patch}:x));
@@ -1223,7 +1228,7 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
       const sameYear = offers.filter(o=>o.offer_no && o.offer_no.startsWith(`OF/${year}/`));
       const maxN = sameYear.reduce((m,o)=>Math.max(m, parseInt(o.offer_no.split('/')[2])||0), 0);
       const offer_no = `OF/${year}/${String(maxN+1).padStart(4,'0')}`;
-      const insertBody = {...body, offer_no, status, expires_at: computeExpiry(settings), zadatek_paid: mode==="log_done"||mode==="mark_accepted"};
+      const insertBody = {...body, offer_no, status, expires_at: f.expires_at || computeExpiry(settings), zadatek_paid: mode==="log_done"||mode==="mark_accepted"};
       const ins = await sbInsert("gs_offers",insertBody);
       const newOffer = {...ins[0], addon_ids:ins[0].addon_ids||[], extra_equip_ids:ins[0].extra_equip_ids||[], custom_items:ins[0].custom_items||[]};
       setOffers(p=>[newOffer,...p]);
