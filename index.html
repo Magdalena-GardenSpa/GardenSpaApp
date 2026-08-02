@@ -201,17 +201,17 @@ function computeCalc(f, equipment, settings, packages, clients, vouchers){
   const qtyOf = () => +(f.days ?? f.qty) || 1;
   const daysRental = (e) => { const q=qtyOf(); if(f.mode!=='day') return rateOf(e); if(q<=1) return rateOf(e); let s=rateOf(e); for(let i=1;i<q;i++) s+=extraDayRate(e,i); return s; };
   let rentalBase, extraRental;
-  if(f.rate_override!=null && f.rate_override!==''){ rentalBase = +f.rate_override; extraRental = 0; }
+  if(f.rate_override!=null && +f.rate_override>0){ rentalBase = +f.rate_override; extraRental = 0; }
   else { rentalBase = daysRental(eq); extraRental = extraEquip.reduce((s,e)=>s+daysRental(e),0); }
   const freeKm = (+settings.free_km||0) * 4, kmRate = +settings.km_rate||0;
   const kmTotal = (+f.km||0) * 4;
   const billKm = Math.max(0, kmTotal - freeKm);
-  const transport = (f.transport_override!=null && f.transport_override!=='') ? +f.transport_override : billKm*kmRate;
+  const transport = (f.transport_override!=null && +f.transport_override>0) ? +f.transport_override : billKm*kmRate;
   const addonsSum = (f.addon_ids||[]).reduce((s,id)=>{ const p=packages.find(x=>x.id===id); return s+(p?+p.price||0:0); },0);
   const customSum = (f.custom_items||[]).reduce((s,c)=>s+(+c.price||0),0);
   const depositAuto = (+eq.deposit||0) + extraEquip.reduce((s,e)=>s+(+e.deposit||0),0);
-  const deposit = (f.deposit_override!=null && f.deposit_override!=='') ? +f.deposit_override : depositAuto;
-  const zad = (f.zadatek_override!=null && f.zadatek_override!=='') ? +f.zadatek_override : (+settings.zadatek||0);
+  const deposit = (f.deposit_override!=null && +f.deposit_override>0) ? +f.deposit_override : depositAuto;
+  const zad = (f.zadatek_override!=null && +f.zadatek_override>0) ? +f.zadatek_override : (+settings.zadatek||0);
   const client = clients.find(c=>c.phone===f.phone);
   const clientDiscType = client?.referral_discount_type || 'percent';
   const clientDiscValue = client?.referral_discount_value || client?.referral_pct_pending || 0;
@@ -239,11 +239,13 @@ function computeExpiry(settings){
   return new Date(Date.now()+ms).toISOString();
 }
 
+function dobaForm(n){ const t=n%10, h=n%100; if(n===1) return 'doba'; if(t>=2&&t<=4&&!(h>=12&&h<=14)) return 'doby'; return 'dób'; }
+
 function tierLabel(tiers, mode, qty){
   const t = (tiers||[]).find(x=>x.mode===mode);
   if(mode==='weekend') return (t?t.title:'Weekend')+` — ${qty>=3?3:2} doby`;
   if(t && (mode!=='day' || qty===1)) return t.title;
-  if(mode==='day') return `${qty} doby relaksu`;
+  if(mode==='day') return `${qty} ${dobaForm(qty)} relaksu`;
   return 'Wynajem';
 }
 
@@ -276,7 +278,7 @@ function offerMsg(o, name, settings, equipment, packages, tiers, clients, vouche
   const greet = name ? `Dzień dobry ${name}!` : 'Dzień dobry!';
   const useTier = o.use_tier !== false;
   const tierData = useTier ? ((tiers||[]).find(t=>t.mode===o.mode) || {}) : {};
-  const tier = tierLabel(tiers, o.mode, o.qty);
+  const tier = tierLabel(tiers, o.mode, +(o.days ?? o.qty) || 1);
   let extras = useTier ? (tierData.perks || 'W prezencie od nas: pierwszy worek drewna na rozpalenie 🔥 i światełka na klimat ✨') : '';
   const norm = s => String(s||'').toLowerCase().replace(/[^a-ząćęłńóśźż ]+/g,' ');
   const extrasNorm = norm(extras);
@@ -297,13 +299,28 @@ function offerMsg(o, name, settings, equipment, packages, tiers, clients, vouche
     return `• ${tierLabel(tiers, a.mode, a.qty||1)}: ${fmt(c2.total - c2.deposit)}`;
   });
   const altBlock = altLines.length ? `\n\nInne opcje do wyboru:\n${altLines.join('\n')}` : '';
-  if(nudge && altBlock) nudge = '\n' + nudge.trimStart();
-  const headLine = useTier ? `${eq.name}${setLine} — ${tier}` : `${eq.name}${setLine} — ${o.qty>1?o.qty+' doby':'1 doba'}`;
+  if(nudge) nudge = '\n' + nudge.trimStart();
+  const nights = +(o.days ?? o.qty) || 1;
+  const headLine = (useTier ? `${eq.name}${setLine} — ${tier}` : `${eq.name}${setLine} — ${nights} ${dobaForm(nights)}`).replace(/\s+/g,' ').replace(/\s+—/,' —');
   const extrasLine = extras ? `\n${extras}.` : '';
   const zadShown = Math.min(calc.zadatek, payableNow);
   const zadClause = zadShown>0 ? (zadShown<payableNow ? ` (w tym zadatek ${fmt(zadShown)} przy rezerwacji)` : ` — płatne przy rezerwacji`) : '';
-  const refLine = o.phone ? ` Kod polecenia dla znajomych: ${referralCode(o.phone)} — ${settings.referral_pct||0}% zniżki dla Ciebie na kolejny wynajem.` : '';
-  return `${greet} Oto Twoja oferta GardenSpa 🌿🛁\n${headLine}${extrasLine}${customLine}\nWynajem: ${fmt(payableNow)}${zadClause}.\nDodatkowo kaucja zwrotna: ${fmt(calc.deposit)} płatna w dniu wynajmu.${altBlock}${nudge}\n💳 Zadatek szybko przez BLIK na numer: ${settings.blik_phone||''}.\n📅 Terminy znikają szybko — odpisz, żeby zarezerwować ten!${refLine}`;
+  const dateLine = `\n📅 Termin: ${dateRangeLabel(o)} (godziny przywiezienia i odbioru ustalamy indywidualnie)`;
+  let expDate = o.expires_at ? new Date(o.expires_at) : null;
+  if(!expDate || expDate < new Date()) expDate = settings ? new Date(computeExpiry(settings)) : null;
+  const validLine = expDate ? `\n⏳ Oferta ważna do ${expDate.getDate()}.${expDate.getMonth()+1}.${expDate.getFullYear()}, godz. ${String(expDate.getHours()).padStart(2,'0')}:${String(expDate.getMinutes()).padStart(2,'0')}.` : '';
+  const breakdown = [
+    `• Wynajem: ${fmt(calc.rental - calc.discountAmt - calc.voucherAmt)}`,
+    calc.transport>0 ? `• Transport (dojazd i odbiór): ${fmt(calc.transport)}` : `• Transport: w cenie`,
+    (calc.addonsSum + calc.customSum)>0 ? `• Dodatki: ${fmt(calc.addonsSum + calc.customSum)}` : null,
+  ].filter(Boolean).join('\n');
+  const woodPkg = (packages||[]).filter(p=>/drewn/i.test(p.name||'') && +p.price>0)
+    .sort((a,b)=>{ const t=(eq.type||'').toLowerCase(); const am=new RegExp(t,'i').test(a.name||'')?0:1, bm=new RegExp(t,'i').test(b.name||'')?0:1; return am-bm; })[0];
+  const woodAlreadyMentioned = /worek drewna|pakiet drewna|drewno/i.test(extras||'');
+  const woodLine = woodAlreadyMentioned
+    ? (woodPkg ? `\n🔥 Każdy kolejny worek drewna: ${fmt(woodPkg.price)}.` : '')
+    : `\n🔥 Pierwszy worek drewna na rozpalenie — gratis od nas${woodPkg?`, każdy kolejny ${fmt(woodPkg.price)}`:''}.`;
+  return `${greet} Oto Twoja oferta GardenSpa 🌿🛁\n${headLine}${dateLine}${extrasLine}${customLine}\n${breakdown}\nRazem: ${fmt(payableNow)}${zadClause}.\nDodatkowo kaucja zwrotna: ${fmt(calc.deposit)} płatna w dniu wynajmu.${woodLine}${altBlock}${nudge}${validLine}\n📩 Żeby zarezerwować ten termin, odpisz i wpłać zadatek ${fmt(zadShown>0?zadShown:calc.zadatek)} BLIK-iem na numer ${settings.blik_phone||''} — termin blokujemy od razu po wpłacie.\n📸 Zobacz naszą nową balię i saunę na zdjęciach: ${settings.social_url||'https://linktr.ee/GardenSpa_Wellness_'}`;
 }
 
 /* ================= APP ================= */
@@ -1001,6 +1018,9 @@ function OfferFormModal({onClose, initial, equipment, packages, tiers, clients, 
           </div>
         </>}
         <label>Ręczna korekta kwot (zostaw puste, aby liczyć automatycznie)</label>
+        {(+f.rate_override>0||+f.transport_override>0||+f.zadatek_override>0||+f.deposit_override>0) && <div style={{marginBottom:8}}>
+          <button type="button" className="btn ghost sm" onClick={()=>setF(p=>({...p,rate_override:"",transport_override:"",zadatek_override:"",deposit_override:""}))}>🔄 Wyczyść wszystkie korekty — licz automatycznie</button>
+        </div>}
         <div className="row2" style={{marginBottom:10}}>
           <div className="field"><label style={{fontSize:11}}>Kwota najmu — nadpisz (zł)</label><input type="number" value={f.rate_override||""} onChange={e=>set("rate_override",e.target.value)} placeholder="automatycznie"/></div>
           <div className="field"><label style={{fontSize:11}}>Transport — nadpisz (zł)</label><input type="number" value={f.transport_override||""} onChange={e=>set("transport_override",e.target.value)} placeholder="automatycznie"/></div>
@@ -1038,13 +1058,13 @@ function OfferFormModal({onClose, initial, equipment, packages, tiers, clients, 
         </div>
 
         <div className="calc-box">
-          {f.rate_override!=null && f.rate_override!=="" && <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginBottom:6,paddingBottom:6,borderBottom:"1px dashed var(--line)"}}>
+          {f.rate_override!=null && +f.rate_override>0 && <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginBottom:6,paddingBottom:6,borderBottom:"1px dashed var(--line)"}}>
             <span style={{fontSize:11.5,color:"#9a6b00"}}>⚠️ Cena wpisana ręcznie ({fmt(f.rate_override)}) — zmiany dat i dób jej nie przeliczają.</span>
             <button className="btn ghost sm" onClick={()=>set("rate_override","")}>Przelicz od nowa</button>
           </div>}
-          <div className="calc-line"><span>Wynajem<div className="muted" style={{fontSize:10.5,fontWeight:400,lineHeight:1.35}}>{(()=>{if(f.rate_override!=null && f.rate_override!=='') return 'kwota wpisana ręcznie'; const q=+(f.days??f.qty)||1; if(f.mode!=='day') return f.mode==='weekend'?(q>=3?'Weekend — 3 doby':'Weekend — 2 doby'):'Tydzień'; if(q<=1) return `Pierwsza doba ${fmt(rate('day'))}`; let wk=0,pn=0; for(let i=1;i<q;i++){const d=new Date(f.year,f.month,f.day+i).getDay(); if(d===5||d===6||d===0) wk++; else pn++;} const rw=+eqSel.rate_extra_day_weekend||+eqSel.rate_extra_day||0, rp=+eqSel.rate_extra_day||0; return `Pierwsza doba ${fmt(rate('day'))}` + (pn?` + ${pn} × kolejna pn-czw ${fmt(rp)}`:'') + (wk?` + ${wk} × kolejna weekend ${fmt(rw)}`:'');})()}</div></span><span>{fmt(calc.rental)}</span></div>
+          <div className="calc-line"><span>Wynajem<div className="muted" style={{fontSize:10.5,fontWeight:400,lineHeight:1.35}}>{(()=>{if(f.rate_override!=null && +f.rate_override>0) return 'kwota wpisana ręcznie'; const q=+(f.days??f.qty)||1; if(f.mode!=='day') return f.mode==='weekend'?(q>=3?'Weekend — 3 doby':'Weekend — 2 doby'):'Tydzień'; if(q<=1) return `Pierwsza doba ${fmt(rate('day'))}`; let wk=0,pn=0; for(let i=1;i<q;i++){const d=new Date(f.year,f.month,f.day+i).getDay(); if(d===5||d===6||d===0) wk++; else pn++;} const rw=+eqSel.rate_extra_day_weekend||+eqSel.rate_extra_day||0, rp=+eqSel.rate_extra_day||0; return `Pierwsza doba ${fmt(rate('day'))}` + (pn?` + ${pn} × kolejna pn-czw ${fmt(rp)}`:'') + (wk?` + ${wk} × kolejna weekend ${fmt(rw)}`:'');})()}</div></span><span>{fmt(calc.rental)}</span></div>
           {calc.discountAmt>0 && <div className="calc-line" style={{color:"#9a6b00"}}><span>Rabat polecenia</span><span>-{fmt(calc.discountAmt)}{calc.discountType==='percent'?` (${calc.discountPct}%)`:''}</span></div>}
-          <div className="calc-line"><span>Transport<div className="muted" style={{fontSize:10.5,fontWeight:400,lineHeight:1.35}}>{f.km||0} km w 1 stronę × 4 przejazdy = {calc.kmTotal} km<br/>{settings.free_km*4} km w cenie · {calc.billKm} km płatne × {settings.km_rate} zł/km</div></span><span>{fmt(calc.transport)}</span></div>
+          <div className="calc-line"><span>Transport<div className="muted" style={{fontSize:10.5,fontWeight:400,lineHeight:1.35}}>{(f.transport_override!=null && +f.transport_override>0) ? 'kwota wpisana ręcznie' : <>{f.km||0} km w 1 stronę × 4 przejazdy = {calc.kmTotal} km<br/>{settings.free_km*4} km w cenie · {calc.billKm} km płatne × {settings.km_rate} zł/km</>}</div></span><span>{fmt(calc.transport)}</span></div>
           <div className="calc-line"><span>Dodatki</span><span>{fmt(calc.addonsSum)}</span></div>
           {calc.voucherAmt>0 && <div className="calc-line" style={{color:"#9a6b00"}}><span>Voucher podarunkowy</span><span>-{fmt(calc.voucherAmt)}</span></div>}
           {calc.customSum!==0 && <div className="calc-line"><span>Uzgodnienia własne</span><span>{fmt(calc.customSum)}</span></div>}
@@ -1897,6 +1917,7 @@ function Ustawienia({settings,setSettings,equipment,setEquipment,packages,setPac
       <div className="card">
         <div className="field"><label>Zadatek przy rezerwacji (zł)</label><input type="number" defaultValue={settings.zadatek} onBlur={ev=>saveSettings({zadatek:+ev.target.value||0})}/></div>
         <div className="field"><label>Numer telefonu do BLIK (zadatek)</label><input defaultValue={settings.blik_phone} onBlur={ev=>saveSettings({blik_phone:ev.target.value})}/></div>
+        <div className="field"><label>Link do social media (Linktree / FB / IG)</label><input defaultValue={settings.social_url||"https://linktr.ee/GardenSpa_Wellness_"} onBlur={ev=>saveSettings({social_url:ev.target.value})}/></div>
         <div className="muted" style={{fontSize:11}}>Kaucja zwrotna ustawiasz osobno dla każdego sprzętu w module "Sprzęt".</div>
       </div>
       </>)}
