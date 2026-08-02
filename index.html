@@ -363,6 +363,7 @@ function App(){
 
 /* ================= PULPIT ================= */
 function Pulpit({equipment,offers,clients,settings,setTab,vouchers,goOffer}){
+  const [drill,setDrill]=useState(null);
   const today = new Date();
   const tNum = today.getFullYear()*10000+today.getMonth()*100+today.getDate();
   const dateNum = o => o.year*10000+o.month*100+o.day;
@@ -370,16 +371,18 @@ function Pulpit({equipment,offers,clients,settings,setTab,vouchers,goOffer}){
   const live = offers.filter(o=>o.status!=="draft");
   const deliveriesToday = live.filter(o=>dateNum(o)===tNum);
   const pickupsToday = live.filter(o=>endNum(o)===tNum && dateNum(o)!==tNum);
-  const inProgress = live.filter(o=>dateNum(o)<tNum && endNum(o)>tNum);
+  const inProgress = live.filter(o=>dateNum(o)<=tNum && endNum(o)>=tNum);
+  const busyIds = new Set(); inProgress.forEach(o=>{ busyIds.add(o.equipment_id); (o.extra_equip_ids||[]).forEach(id=>busyIds.add(id)); });
+  const freeEquip = equipment.filter(e=>!busyIds.has(e.id));
   const todayOffers = [...deliveriesToday,...pickupsToday];
-  const freeCount = equipment.filter(e=>e.status==="available").length;
+  const freeCount = freeEquip.length;
   const nameOf = o => { const c=clients.find(c=>c.phone===o.phone); return displayName(o.phone,(c&&c.name)||o.name); };
   const eqLabel = o => { const eq=equipment.find(e=>e.id===o.equipment_id); const extra=(o.extra_equip_ids||[]).length; return (eq?eq.name:"—")+(extra?` + ${extra} (zestaw)`:""); };
   const endLabel = o => { const e=new Date(o.year,o.month,o.day+(o.days||1)-1); return `${e.getDate()}.${e.getMonth()+1}.${e.getFullYear()}`; };
   const alerts = [
     ...deliveriesToday.map(o=>({icon:"🚚", text:`Dostawa dziś: ${eqLabel(o)} → ${nameOf(o)}`, o})),
     ...pickupsToday.map(o=>({icon:"📦", text:`Odbiór dziś: ${eqLabel(o)} od ${nameOf(o)}`, o})),
-    ...inProgress.map(o=>({icon:"🔄", text:`Trwa wynajem: ${eqLabel(o)} · ${nameOf(o)} (do ${endLabel(o)})`, o})),
+    ...inProgress.filter(o=>dateNum(o)!==tNum && endNum(o)!==tNum).map(o=>({icon:"🔄", text:`Trwa wynajem: ${eqLabel(o)} · ${nameOf(o)} (do ${endLabel(o)})`, o})),
   ];
   if(!alerts.length) alerts.push({icon:"✓", text:"Brak dzisiejszych dostaw/odbiorów."});
   const todayNum = tNum;
@@ -388,13 +391,26 @@ function Pulpit({equipment,offers,clients,settings,setTab,vouchers,goOffer}){
     <div>
       <div className="topbar"><div><h1>Pulpit</h1><p>Wynajem balii i sauny</p></div></div>
       <div className="grid row2" style={{marginBottom:8}}>
-        <div className="card stat"><div className="v">{deliveriesToday.length}</div><div className="l">🚚 Dostawy dziś</div></div>
-        <div className="card stat"><div className="v">{pickupsToday.length}</div><div className="l">📦 Odbiory dziś</div></div>
+        <div className="card stat" style={{cursor:"pointer"}} onClick={()=>setDrill(drill==="del"?null:"del")}><div className="v">{deliveriesToday.length}</div><div className="l">🚚 Dostawy dziś</div></div>
+        <div className="card stat" style={{cursor:"pointer"}} onClick={()=>setDrill(drill==="pick"?null:"pick")}><div className="v">{pickupsToday.length}</div><div className="l">📦 Odbiory dziś</div></div>
       </div>
-      <div className="grid row2" style={{marginBottom:16}}>
-        <div className="card stat"><div className="v">{inProgress.length}</div><div className="l">🔄 Trwające wynajmy</div></div>
-        <div className="card stat"><div className="v">{freeCount}</div><div className="l">Wolny sprzęt dziś</div></div>
+      <div className="grid row2" style={{marginBottom:drill?8:16}}>
+        <div className="card stat" style={{cursor:"pointer"}} onClick={()=>setDrill(drill==="prog"?null:"prog")}><div className="v">{inProgress.length}</div><div className="l">🔄 Trwające wynajmy</div></div>
+        <div className="card stat" style={{cursor:"pointer"}} onClick={()=>setDrill(drill==="free"?null:"free")}><div className="v">{freeCount}</div><div className="l">Wolny sprzęt dziś</div></div>
       </div>
+      {drill && <div className="card" style={{marginBottom:16,background:"#faf9f5"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+          <b style={{color:"var(--green-d)",fontSize:13}}>{drill==="del"?"🚚 Dostawy dziś":drill==="pick"?"📦 Odbiory dziś":drill==="prog"?"🔄 Trwające wynajmy (obejmują dzisiejszą datę)":"Wolny sprzęt dziś"}</b>
+          <button className="btn ghost sm" onClick={()=>setDrill(null)}>✕</button>
+        </div>
+        {drill==="free" ? (freeEquip.length? freeEquip.map(e=>(<div key={e.id} style={{fontSize:12.5,padding:"5px 0",borderBottom:"1px solid var(--line)"}}>{e.name}</div>)) : <div className="muted" style={{fontSize:12.5}}>Cały sprzęt zajęty.</div>)
+          : ((drill==="del"?deliveriesToday:drill==="pick"?pickupsToday:inProgress).length
+            ? (drill==="del"?deliveriesToday:drill==="pick"?pickupsToday:inProgress).map(o=>(
+                <div key={o.id} style={{fontSize:12.5,padding:"5px 0",borderBottom:"1px solid var(--line)",cursor:"pointer"}} onClick={()=>goOffer(o)}>
+                  <b>{eqLabel(o)}</b> · {nameOf(o)} <span className="muted">— {dateRangeLabel(o)}</span>
+                </div>))
+            : <div className="muted" style={{fontSize:12.5}}>Brak pozycji.</div>)}
+      </div>}
       <div style={{display:"flex",gap:10,marginBottom:20,flexWrap:"wrap"}}>
         <button className="btn primary" onClick={()=>setTab("oferty")}>+ Nowa oferta / kalkulator</button>
         <button className="btn ghost" onClick={()=>setTab("kalendarz")}>Sprawdź dostępność</button>
