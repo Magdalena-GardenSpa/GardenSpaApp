@@ -466,17 +466,27 @@ function Kalendarz({equipment,offers,clients,goOffer,initialYm,clearCalYm}){
   useEffect(()=>{ if(initialYm){ setYm(initialYm); clearCalYm&&clearCalYm(); } },[initialYm&&initialYm.y,initialYm&&initialYm.m]);
   const first = new Date(ym.y,ym.m,1); const last = new Date(ym.y,ym.m+1,0);
   const startOffset = (first.getDay()+6)%7;
+  const [dayDetail,setDayDetail]=useState(null);
   const booked = {};
-  offers.filter(o=>o.status!=="draft" && o.year===ym.y && o.month===ym.m).forEach(o=>{
+  offers.filter(o=>o.status!=="draft").forEach(o=>{
     const ids = [o.equipment_id,...(o.extra_equip_ids||[])];
     const eqs = ids.map(id=>equipment.find(e=>e.id===id)).filter(Boolean);
     const eq = eqs[0];
     const isSet = eqs.length>1;
-    for(let d=o.day; d<=o.day+(o.days||1); d++){
+    const start = new Date(o.year,o.month,o.day);
+    for(let i=0; i<=(o.days||1); i++){
+      const dt = new Date(start); dt.setDate(dt.getDate()+i);
+      if(dt.getFullYear()!==ym.y || dt.getMonth()!==ym.m) continue;
+      const d = dt.getDate();
       const prev = booked[d];
       const colors = eqs.map(e=>e.color||"#153826");
-      booked[d]= prev ? {...prev, colors:[...new Set([...prev.colors,...colors])], isSet: prev.isSet||isSet||([...new Set([...prev.colors,...colors])].length>1)}
-        : {colors, shape:eq?eq.shape||"square":"square", pending:o.status==="sent", gift:!!o.voucher_code, isSet, offer:o};
+      if(prev){
+        const allOffers = [...prev.offers,o];
+        booked[d] = {...prev, colors:[...new Set([...prev.colors,...colors])], sets: prev.sets||isSet,
+          offers: allOffers, multiClient: [...new Set(allOffers.map(x=>x.phone))].length>1};
+      } else {
+        booked[d] = {colors, shape:eq?eq.shape||"square":"square", pending:o.status==="sent", gift:!!o.voucher_code, sets:isSet, offers:[o], multiClient:false, offer:o};
+      }
     }
   });
   const cells=[]; for(let i=0;i<startOffset;i++) cells.push(null);
@@ -506,17 +516,18 @@ function Kalendarz({equipment,offers,clients,goOffer,initialYm,clearCalYm}){
             const bg = b ? (b.colors.length>1
               ? `linear-gradient(135deg, ${b.colors.map((c,ci)=>`${c} ${ci*100/b.colors.length}%, ${c} ${(ci+1)*100/b.colors.length}%`).join(', ')})`
               : c0) : (isWeekend?"#f4ecdc":"#fff");
-            return (<div key={i} className="calcell" onClick={()=>b&&b.offer&&goOffer&&goOffer(b.offer)} style={{
+            return (<div key={i} className="calcell" onClick={()=>b&&setDayDetail({day:d,info:b})} style={{
               background:bg,
               color:b?"#fff":"var(--ink)",
               border:pending?`1.5px dashed ${c0}`:(isWeekend?"1.5px solid #d8c68a":"1px solid var(--line)"),
               borderRadius:radius,position:"relative",overflow:"hidden",cursor:b?"pointer":"default",
-              boxShadow:b&&b.isSet?"inset 0 0 0 2px #fff":"none"
+              boxShadow:b&&(b.sets||b.multiClient)?"inset 0 0 0 2px #fff":"none"
             }}>
               {isCyl && !pending && <><span style={{position:"absolute",left:0,right:0,top:"28%",height:1,background:"rgba(255,255,255,.45)"}}/><span style={{position:"absolute",left:0,right:0,top:"68%",height:1,background:"rgba(255,255,255,.45)"}}/></>}
               <span style={{position:"relative",zIndex:1,textShadow:b?"0 1px 2px rgba(0,0,0,.45)":"none"}}>{d}</span>
               {b && b.gift && <span style={{position:"absolute",top:-2,right:-1,fontSize:9,zIndex:2}}>🎁</span>}
-              {b && b.isSet && <span style={{position:"absolute",bottom:0,left:2,fontSize:8,fontWeight:700,zIndex:2,lineHeight:1,textShadow:"0 1px 2px rgba(0,0,0,.5)"}}>🔗</span>}
+              {b && b.multiClient && <span style={{position:"absolute",bottom:0,left:2,fontSize:8,fontWeight:700,zIndex:2,lineHeight:1,textShadow:"0 1px 2px rgba(0,0,0,.5)"}}>👥</span>}
+              {b && b.sets && !b.multiClient && <span style={{position:"absolute",bottom:0,left:2,fontSize:8,fontWeight:700,zIndex:2,lineHeight:1,textShadow:"0 1px 2px rgba(0,0,0,.5)"}}>🔗</span>}
             </div>);
           })}
         </div>
@@ -526,7 +537,8 @@ function Kalendarz({equipment,offers,clients,goOffer,initialYm,clearCalYm}){
             {e.shape==='cylinder' && <><span style={{position:"absolute",left:0,right:0,top:"28%",height:1,background:"rgba(255,255,255,.45)"}}/><span style={{position:"absolute",left:0,right:0,top:"68%",height:1,background:"rgba(255,255,255,.45)"}}/></>}
             </span>{e.name}</span>))}
           <span><span style={{display:"inline-block",width:12,height:9,border:"1.5px dashed #8a8378",borderRadius:2,marginRight:5}}/>Oferta wysłana (oczekuje)</span>
-          <span><span style={{display:"inline-block",width:12,height:9,background:"linear-gradient(135deg,#153826 0%,#153826 50%,#c9a227 50%,#c9a227 100%)",boxShadow:"inset 0 0 0 1.5px #fff",marginRight:5}}/>🔗 Zestaw (2+ sprzęty)</span>
+          <span><span style={{display:"inline-block",width:12,height:9,background:"linear-gradient(135deg,#153826 0%,#153826 50%,#c9a227 50%,#c9a227 100%)",boxShadow:"inset 0 0 0 1.5px #fff",marginRight:5}}/>🔗 Zestaw (1 klient, 2+ sprzęty)</span>
+          <span><span style={{display:"inline-block",width:12,height:9,background:"linear-gradient(135deg,#153826 0%,#153826 50%,#3a6350 50%,#3a6350 100%)",boxShadow:"inset 0 0 0 1.5px #fff",marginRight:5}}/>👥 Różni klienci w tym dniu</span>
           <span>🎁 Realizacja vouchera</span>
         </div>
         <h3 style={{fontSize:12,color:"var(--muted)",textTransform:"uppercase",marginBottom:8}}>Rezerwacje w tym miesiącu</h3>
@@ -537,6 +549,41 @@ function Kalendarz({equipment,offers,clients,goOffer,initialYm,clearCalYm}){
           return (<div key={o.id} style={{padding:"8px 0",borderBottom:"1px solid var(--line)",fontSize:13,cursor:"pointer"}} onClick={()=>goOffer&&goOffer(o)}>
             <b>{eq?eq.name:"—"}{extra?` + ${extra} 🔗`:""}</b> · {displayName(o.phone,(c&&c.name)||o.name)} <span className="muted">— {dateRangeLabel(o)} · {fmt(calc.total-calc.deposit)}</span></div>); })}
       </div>
+      {dayDetail && (()=>{ const info=dayDetail.info; const dOffers=info.offers||[];
+        return (
+        <div className="modal-overlay" onClick={()=>setDayDetail(null)}>
+          <div className="modal" onClick={e=>e.stopPropagation()}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+              <h2>{dayDetail.day} {MONTHS[ym.m]} {ym.y}</h2>
+              <button className="btn ghost sm" onClick={()=>setDayDetail(null)}>✕</button>
+            </div>
+            <p className="muted" style={{fontSize:12,marginBottom:12}}>
+              {dOffers.length===1 ? (info.sets?"🔗 Zestaw — 1 klient, kilka sprzętów":"1 wynajem") : `👥 ${dOffers.length} wynajmy${info.multiClient?" — różni klienci":""}`}
+            </p>
+            {dOffers.map(o=>{ const c=clients.find(x=>x.phone===o.phone);
+              const eqs=[o.equipment_id,...(o.extra_equip_ids||[])].map(id=>equipment.find(e=>e.id===id)).filter(Boolean);
+              const calc=computeCalc(o,equipment,{free_km:60,km_rate:2,zadatek:200},[],clients,[]);
+              const st = o.status==="sent"?"⏳ Oferta wysłana":o.status==="done"?"✅ Zrealizowane":isInProgress(o)?"🔄 W trakcie najmu":"📅 Zarezerwowane";
+              return (<div key={o.id} className="card" style={{marginBottom:8,cursor:"pointer"}} onClick={()=>{setDayDetail(null); goOffer&&goOffer(o);}}>
+                <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"flex-start"}}>
+                  <div style={{minWidth:0}}>
+                    <b>{displayName(o.phone,(c&&c.name)||o.name)}</b>
+                    <div style={{fontSize:12.5,marginTop:3,display:"flex",flexWrap:"wrap",gap:6,alignItems:"center"}}>
+                      {eqs.map(e=>(<span key={e.id} style={{display:"inline-flex",alignItems:"center",gap:4}}>
+                        <span style={{width:10,height:8,background:e.color||"#153826",borderRadius:e.shape==='round'?'50%':e.shape==='cylinder'?'50%/30%':2,display:"inline-block"}}/>{e.name}</span>))}
+                      {eqs.length>1 && <span style={{fontSize:11,color:"var(--muted)"}}>🔗 zestaw</span>}
+                    </div>
+                    <div className="muted" style={{fontSize:12,marginTop:3}}>{dateRangeLabel(o)}{o.delivery_address?" · "+o.delivery_address:""}</div>
+                  </div>
+                  <div style={{textAlign:"right",whiteSpace:"nowrap"}}>
+                    <b style={{color:"var(--green-d)"}}>{fmt(calc.total-calc.deposit)}</b>
+                    <div className="muted" style={{fontSize:11,marginTop:2}}>{st}</div>
+                  </div>
+                </div>
+              </div>);
+            })}
+          </div>
+        </div>); })()}
     </div>
   );
 }
