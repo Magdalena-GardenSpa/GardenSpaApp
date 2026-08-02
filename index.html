@@ -2,6 +2,9 @@
 <html lang="pl">
 <head>
 <meta charset="UTF-8" />
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="0" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>GardenSpa — Zarządzanie wynajmem</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
@@ -94,6 +97,7 @@
 <div id="root"></div>
 <script type="text/babel" data-presets="react">
 const { useState, useEffect, useMemo, useCallback } = React;
+const BUILD = "2026-08-02-a";
 
 /* ============ KONFIGURACJA SUPABASE ============
    Jednorazowo uruchom SQL ze skryptu na końcu tego pliku (w komentarzu) w
@@ -133,7 +137,11 @@ const LOGO = "https://ugc.production.linktr.ee/dce7fc8e-f896-412b-b1b8-4a47ce1d3
 function cityOnly(v){
   if(!v) return "";
   let s = String(v).split(",").pop().trim();
-  s = s.replace(/^(ul\.|ulica|al\.|os\.)\s*/i,"").replace(/\d{2}-\d{3}\s*/,"").trim();
+  s = s.replace(/\d{2}-\d{3}\s*/,"").trim();
+  s = s.split(/\s+(?:wjazd|obok|przy|za|k\.|kolo|koło)\b/i)[0].trim();
+  const kw = s.search(/\b(ul\.|ulica|al\.|aleja|os\.|osiedle)\b/i);
+  if(kw>0) s = s.slice(0,kw).trim();
+  else s = s.replace(/^(ul\.|ulica|al\.|aleja|os\.|osiedle)\s*/i,"").trim();
   const m = s.match(/\d+[a-zA-Z]?(\/\d+[a-zA-Z]?)?(?!.*\d)/);
   if(m){ const after = s.slice(m.index+m[0].length).trim(); if(after) s = after; else { s = s.slice(0,m.index).replace(/\s*(ul\.|ulica|al\.|os\.)\s*$/i,"").trim(); } }
   return s.replace(/^(ul\.|ulica|al\.|os\.)\s*/i,"").trim();
@@ -180,14 +188,18 @@ function dateRangeLabel(o){
 function computeCalc(f, equipment, settings, packages, clients, vouchers){
   const eq = equipment.find(e=>e.id===f.equipment_id) || equipment[0] || {};
   const rateOf = (e) => {
-    if(f.mode==='weekend') return +e.rate_weekend||0;
+    if(f.mode==='weekend') return (qtyOf()>=3 ? (+e.rate_weekend3||+e.rate_weekend||0) : (+e.rate_weekend||0));
     if(f.mode==='week') return +e.rate_week||0;
-    const d = new Date(f.year, f.month, f.day).getDay();
+    return +e.rate_day||0;
+  };
+  const extraDayRate = (e, dayIdx) => {
+    const d = new Date(f.year, f.month, f.day+dayIdx).getDay();
     const isW = d===5||d===6||d===0;
-    return isW ? (+e.rate_day_weekend||+e.rate_day||0) : (+e.rate_day||0);
+    return isW ? (+e.rate_extra_day_weekend||+e.rate_extra_day||+e.rate_day||0) : (+e.rate_extra_day||+e.rate_day||0);
   };
   const extraEquip = (f.extra_equip_ids||[]).map(id=>equipment.find(e=>e.id===id)).filter(Boolean);
-  const daysRental = (e) => { const q=+f.qty||1; if(f.mode!=='day'||q<=1) return rateOf(e)*q; return rateOf(e) + (q-1)*(+e.rate_extra_day||+e.rate_day||0); };
+  const qtyOf = () => +(f.days ?? f.qty) || 1;
+  const daysRental = (e) => { const q=qtyOf(); if(f.mode!=='day') return rateOf(e); if(q<=1) return rateOf(e); let s=rateOf(e); for(let i=1;i<q;i++) s+=extraDayRate(e,i); return s; };
   let rentalBase, extraRental;
   if(f.rate_override!=null && f.rate_override!==''){ rentalBase = +f.rate_override; extraRental = 0; }
   else { rentalBase = daysRental(eq); extraRental = extraEquip.reduce((s,e)=>s+daysRental(e),0); }
@@ -229,6 +241,7 @@ function computeExpiry(settings){
 
 function tierLabel(tiers, mode, qty){
   const t = (tiers||[]).find(x=>x.mode===mode);
+  if(mode==='weekend') return (t?t.title:'Weekend')+` — ${qty>=3?3:2} doby`;
   if(t && (mode!=='day' || qty===1)) return t.title;
   if(mode==='day') return `${qty} doby relaksu`;
   return 'Wynajem';
@@ -280,7 +293,7 @@ function offerMsg(o, name, settings, equipment, packages, tiers, clients, vouche
   const payableNow = calc.total - calc.deposit;
   const hasOverride = o.rate_override!=null && o.rate_override!=='';
   const altLines = hasOverride ? [] : (o.alt_options||[]).map(a=>{
-    const c2 = computeCalc({...o, mode:a.mode, qty:a.qty||1}, equipment, settings, packages, clients||[], vouchers||[]);
+    const c2 = computeCalc({...o, mode:a.mode, days:a.qty||1, qty:a.qty||1}, equipment, settings, packages, clients||[], vouchers||[]);
     return `• ${tierLabel(tiers, a.mode, a.qty||1)}: ${fmt(c2.total - c2.deposit)}`;
   });
   const altBlock = altLines.length ? `\n\nInne opcje do wyboru:\n${altLines.join('\n')}` : '';
@@ -381,7 +394,9 @@ function App(){
           </button>
         ))}
       </nav>
-      <div style={{textAlign:"center",fontSize:9,color:"#b7c2ba",padding:"3px 0 2px",background:"#fff"}}>build 2026-07-21-c</div>
+      <div style={{textAlign:"center",fontSize:9,color:"#b7c2ba",padding:"3px 0 2px",background:"#fff"}}>
+        build {BUILD} · <span style={{textDecoration:"underline",cursor:"pointer"}} onClick={()=>{location.href=location.pathname+"?v="+Date.now();}}>odśwież aplikację</span>
+      </div>
     </div>
   );
 }
@@ -521,13 +536,14 @@ function Kalendarz({equipment,offers,clients,goOffer,initialYm,clearCalYm}){
               color:b?"#fff":"var(--ink)",
               border:pending?`1.5px dashed ${c0}`:(isWeekend?"1.5px solid #d8c68a":"1px solid var(--line)"),
               borderRadius:radius,position:"relative",overflow:"hidden",cursor:b?"pointer":"default",
-              boxShadow:b&&(b.sets||b.multiClient)?"inset 0 0 0 2px #fff":"none"
+              boxShadow:b&&(b.sets||b.multiClient||(b.offers||[]).length>1)?"inset 0 0 0 2px #fff":"none"
             }}>
               {isCyl && !pending && <><span style={{position:"absolute",left:0,right:0,top:"28%",height:1,background:"rgba(255,255,255,.45)"}}/><span style={{position:"absolute",left:0,right:0,top:"68%",height:1,background:"rgba(255,255,255,.45)"}}/></>}
               <span style={{position:"relative",zIndex:1,textShadow:b?"0 1px 2px rgba(0,0,0,.45)":"none"}}>{d}</span>
               {b && b.gift && <span style={{position:"absolute",top:-2,right:-1,fontSize:9,zIndex:2}}>🎁</span>}
               {b && b.multiClient && <span style={{position:"absolute",bottom:0,left:2,fontSize:8,fontWeight:700,zIndex:2,lineHeight:1,textShadow:"0 1px 2px rgba(0,0,0,.5)"}}>👥</span>}
-              {b && b.sets && !b.multiClient && <span style={{position:"absolute",bottom:0,left:2,fontSize:8,fontWeight:700,zIndex:2,lineHeight:1,textShadow:"0 1px 2px rgba(0,0,0,.5)"}}>🔗</span>}
+              {b && !b.multiClient && (b.offers||[]).length>1 && <span style={{position:"absolute",bottom:0,left:2,fontSize:8,fontWeight:700,zIndex:2,lineHeight:1,textShadow:"0 1px 2px rgba(0,0,0,.5)"}}>🧾</span>}
+              {b && !b.multiClient && (b.offers||[]).length===1 && b.sets && <span style={{position:"absolute",bottom:0,left:2,fontSize:8,fontWeight:700,zIndex:2,lineHeight:1,textShadow:"0 1px 2px rgba(0,0,0,.5)"}}>🔗</span>}
             </div>);
           })}
         </div>
@@ -538,6 +554,7 @@ function Kalendarz({equipment,offers,clients,goOffer,initialYm,clearCalYm}){
             </span>{e.name}</span>))}
           <span><span style={{display:"inline-block",width:12,height:9,border:"1.5px dashed #8a8378",borderRadius:2,marginRight:5}}/>Oferta wysłana (oczekuje)</span>
           <span><span style={{display:"inline-block",width:12,height:9,background:"linear-gradient(135deg,#153826 0%,#153826 50%,#c9a227 50%,#c9a227 100%)",boxShadow:"inset 0 0 0 1.5px #fff",marginRight:5}}/>🔗 Zestaw (1 klient, 2+ sprzęty)</span>
+          <span><span style={{display:"inline-block",width:12,height:9,background:"linear-gradient(135deg,#153826 0%,#153826 50%,#3a6350 50%,#3a6350 100%)",boxShadow:"inset 0 0 0 1.5px #fff",marginRight:5}}/>🧾 Kilka osobnych wynajmów 1 klienta</span>
           <span><span style={{display:"inline-block",width:12,height:9,background:"linear-gradient(135deg,#153826 0%,#153826 50%,#3a6350 50%,#3a6350 100%)",boxShadow:"inset 0 0 0 1.5px #fff",marginRight:5}}/>👥 Różni klienci w tym dniu</span>
           <span>🎁 Realizacja vouchera</span>
         </div>
@@ -558,7 +575,7 @@ function Kalendarz({equipment,offers,clients,goOffer,initialYm,clearCalYm}){
               <button className="btn ghost sm" onClick={()=>setDayDetail(null)}>✕</button>
             </div>
             <p className="muted" style={{fontSize:12,marginBottom:12}}>
-              {dOffers.length===1 ? (info.sets?"🔗 Zestaw — 1 klient, kilka sprzętów":"1 wynajem") : `👥 ${dOffers.length} wynajmy${info.multiClient?" — różni klienci":""}`}
+              {dOffers.length===1 ? (info.sets?"🔗 Zestaw — 1 klient, kilka sprzętów":"1 wynajem") : (info.multiClient ? `👥 ${dOffers.length} wynajmy — różni klienci` : `🧾 ${dOffers.length} osobne wynajmy — ten sam klient`)}
             </p>
             {dOffers.map(o=>{ const c=clients.find(x=>x.phone===o.phone);
               const eqs=[o.equipment_id,...(o.extra_equip_ids||[])].map(id=>equipment.find(e=>e.id===id)).filter(Boolean);
@@ -808,10 +825,9 @@ function OfferFormModal({onClose, initial, equipment, packages, tiers, clients, 
   const delCustom = i => set("custom_items", f.custom_items.filter((_,idx)=>idx!==i));
 
   const rate = (mode)=>{
-    if(mode==='weekend') return +eqSel.rate_weekend||0;
+    if(mode==='weekend') return (+(f.days??f.qty)||1)>=3 ? (+eqSel.rate_weekend3||+eqSel.rate_weekend||0) : (+eqSel.rate_weekend||0);
     if(mode==='week') return +eqSel.rate_week||0;
-    const d=new Date(f.year,f.month,f.day).getDay(); const isW=d===5||d===6||d===0;
-    return isW ? (+eqSel.rate_day_weekend||+eqSel.rate_day||0) : (+eqSel.rate_day||0);
+    return +eqSel.rate_day||0;
   };
 
   return (
@@ -931,22 +947,32 @@ function OfferFormModal({onClose, initial, equipment, packages, tiers, clients, 
         </div>
         <label>Wariant (opcjonalny)</label>
         <div className="row3" style={{marginBottom:10}}>
-          {tiers.map(t=>{ const sel = f.mode===t.mode;
-            return (<div key={t.id} className="card" style={{cursor:"pointer",borderColor:sel?"var(--green)":"var(--line)",background:sel?"var(--green-l)":"#fff",padding:12}} onClick={()=>set("mode",t.mode)}>
+          <div className="card" style={{cursor:"pointer",borderColor:f.use_tier===false?"var(--green)":"var(--line)",background:f.use_tier===false?"var(--green-l)":"#fff",padding:12}} onClick={()=>setF(p=>({...p,use_tier:false,mode:'day'}))}>
+            <div style={{fontWeight:700,marginBottom:2}}>— Bez wariantu</div>
+            <div className="muted" style={{fontSize:11.5,marginBottom:4}}>sama cena za dobę, bez opisu</div>
+            <div style={{fontWeight:700,color:"var(--green-d)"}}>{fmt(rate('day'))} / doba</div>
+          </div>
+          {tiers.map(t=>{ const sel = f.use_tier!==false && f.mode===t.mode; const r = rate(t.mode); if(!r) return null;
+            return (<div key={t.id} className="card" style={{cursor:"pointer",borderColor:sel?"var(--green)":"var(--line)",background:sel?"var(--green-l)":"#fff",padding:12}} onClick={()=>{ if(sel) setF(p=>({...p,use_tier:false})); else setF(p=>({...p,mode:t.mode,use_tier:true, ...(t.mode==='weekend'?{days:(+(p.days??p.qty)>=3?3:2),qty:(+(p.days??p.qty)>=3?3:2)}:{}), ...(t.mode==='week'?{days:7,qty:7}:{})})); }}>
               <div style={{fontWeight:700,marginBottom:2}}>{t.emoji} {t.title}</div>
               <div className="muted" style={{fontSize:11.5,marginBottom:4}}>{t.subtitle}</div>
               <div style={{fontWeight:700,color:"var(--green-d)"}}>{fmt(rate(t.mode))}{t.mode==='day'?" / doba":""}</div>
             </div>); })}
         </div>
+        <div className="muted" style={{fontSize:11.5,marginBottom:8}}>Kliknij wybrany wariant ponownie, aby go odznaczyć.</div>
+        {f.mode==='weekend' && <div style={{display:"flex",gap:6,marginBottom:10,alignItems:"center",flexWrap:"wrap"}}>
+          <span style={{fontSize:12,color:"var(--muted)"}}>Długość weekendu:</span>
+          {[2,3].map(n=>(<button key={n} type="button" className={"btn sm "+((+(f.days??f.qty)||2)===n?"primary":"ghost")} onClick={()=>setF(p=>({...p,days:n,qty:n}))}>{n} doby · {fmt(n>=3?(+eqSel.rate_weekend3||+eqSel.rate_weekend||0):(+eqSel.rate_weekend||0))}</button>))}
+        </div>}
         <label style={{cursor:"pointer",display:"block",marginBottom:8}} onClick={()=>set("use_tier", f.use_tier===false)}>{f.use_tier===false?"☐":"☑"} Dołącz opis wariantu do oferty (tytuł, gratisy, zachęta)</label>
         {f.use_tier!==false && (()=>{ const activeTier = tiers.find(t=>t.mode===f.mode); return activeTier && activeTier.show_upsell && activeTier.upsell_text ?
           <div className="banner ok" style={{fontSize:12}}>💡 {activeTier.upsell_text}</div> : null; })()}
         <label style={{marginTop:6}}>Dodatkowe opcje w ofercie (klient wybiera)</label>
         <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>
-          {[{mode:'day',qty:1,l:'1 doba'},{mode:'day',qty:2,l:'2 doby'},{mode:'day',qty:3,l:'3 doby'},{mode:'weekend',qty:1,l:'Weekend'},{mode:'week',qty:1,l:'Tydzień'}].map(op=>{
+          {[{mode:'day',qty:1,l:'1 doba'},{mode:'day',qty:2,l:'2 doby'},{mode:'day',qty:3,l:'3 doby'},{mode:'weekend',qty:2,l:'Weekend 2 doby'},{mode:'weekend',qty:3,l:'Weekend 3 doby'},{mode:'week',qty:7,l:'Tydzień'}].map(op=>{
             const list = f.alt_options||[];
             const on = list.some(a=>a.mode===op.mode && (a.qty||1)===op.qty);
-            const isCurrent = f.mode===op.mode && (+f.qty||1)===op.qty;
+            const isCurrent = f.mode===op.mode && (+(f.days??f.qty)||1)===op.qty;
             return <button key={op.mode+op.qty} type="button" className={"btn sm "+(on?"primary":"ghost")} disabled={isCurrent}
               style={isCurrent?{opacity:.45}:null}
               onClick={()=>set("alt_options", on ? list.filter(a=>!(a.mode===op.mode && (a.qty||1)===op.qty)) : [...list,{mode:op.mode,qty:op.qty}])}>
@@ -1012,9 +1038,13 @@ function OfferFormModal({onClose, initial, equipment, packages, tiers, clients, 
         </div>
 
         <div className="calc-box">
-          <div className="calc-line"><span>Wynajem</span><span>{fmt(calc.rental)}</span></div>
+          {f.rate_override!=null && f.rate_override!=="" && <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginBottom:6,paddingBottom:6,borderBottom:"1px dashed var(--line)"}}>
+            <span style={{fontSize:11.5,color:"#9a6b00"}}>⚠️ Cena wpisana ręcznie ({fmt(f.rate_override)}) — zmiany dat i dób jej nie przeliczają.</span>
+            <button className="btn ghost sm" onClick={()=>set("rate_override","")}>Przelicz od nowa</button>
+          </div>}
+          <div className="calc-line"><span>Wynajem<div className="muted" style={{fontSize:10.5,fontWeight:400,lineHeight:1.35}}>{(()=>{if(f.rate_override!=null && f.rate_override!=='') return 'kwota wpisana ręcznie'; const q=+(f.days??f.qty)||1; if(f.mode!=='day') return f.mode==='weekend'?(q>=3?'Weekend — 3 doby':'Weekend — 2 doby'):'Tydzień'; if(q<=1) return `Pierwsza doba ${fmt(rate('day'))}`; let wk=0,pn=0; for(let i=1;i<q;i++){const d=new Date(f.year,f.month,f.day+i).getDay(); if(d===5||d===6||d===0) wk++; else pn++;} const rw=+eqSel.rate_extra_day_weekend||+eqSel.rate_extra_day||0, rp=+eqSel.rate_extra_day||0; return `Pierwsza doba ${fmt(rate('day'))}` + (pn?` + ${pn} × kolejna pn-czw ${fmt(rp)}`:'') + (wk?` + ${wk} × kolejna weekend ${fmt(rw)}`:'');})()}</div></span><span>{fmt(calc.rental)}</span></div>
           {calc.discountAmt>0 && <div className="calc-line" style={{color:"#9a6b00"}}><span>Rabat polecenia</span><span>-{fmt(calc.discountAmt)}{calc.discountType==='percent'?` (${calc.discountPct}%)`:''}</span></div>}
-          <div className="calc-line"><span>Transport ({f.km||0} km w 1 str. × 4 = {calc.kmTotal} km, {settings.free_km*4} km w cenie, {calc.billKm} płatne)</span><span>{fmt(calc.transport)}</span></div>
+          <div className="calc-line"><span>Transport<div className="muted" style={{fontSize:10.5,fontWeight:400,lineHeight:1.35}}>{f.km||0} km w 1 stronę × 4 przejazdy = {calc.kmTotal} km<br/>{settings.free_km*4} km w cenie · {calc.billKm} km płatne × {settings.km_rate} zł/km</div></span><span>{fmt(calc.transport)}</span></div>
           <div className="calc-line"><span>Dodatki</span><span>{fmt(calc.addonsSum)}</span></div>
           {calc.voucherAmt>0 && <div className="calc-line" style={{color:"#9a6b00"}}><span>Voucher podarunkowy</span><span>-{fmt(calc.voucherAmt)}</span></div>}
           {calc.customSum!==0 && <div className="calc-line"><span>Uzgodnienia własne</span><span>{fmt(calc.customSum)}</span></div>}
@@ -1753,14 +1783,17 @@ function Ustawienia({settings,setSettings,equipment,setEquipment,packages,setPac
           {COLOR_SWATCHES.map(c=>(<span key={c} className={"swatch"+(e.color===c?" sel":"")} style={{background:c}} onClick={()=>updEquip(e.id,{color:c})}/>))}
         </div>
         <div className="row3" style={{marginBottom:8}}>
-          <div><label>Doba (pon-czw)</label><input type="number" defaultValue={e.rate_day} onBlur={ev=>updEquip(e.id,{rate_day:+ev.target.value||0})}/></div>
-          <div><label>Doba (pt-nd)</label><input type="number" defaultValue={e.rate_day_weekend} onBlur={ev=>updEquip(e.id,{rate_day_weekend:+ev.target.value||0})}/></div>
-          <div><label>Kolejna doba</label><input type="number" defaultValue={e.rate_extra_day} onBlur={ev=>updEquip(e.id,{rate_extra_day:+ev.target.value||0})}/></div>
-          <div><label>Kaucja</label><input type="number" defaultValue={e.deposit} onBlur={ev=>updEquip(e.id,{deposit:+ev.target.value||0})}/></div>
+          <div><label>Pierwsza doba</label><input type="number" defaultValue={e.rate_day} onBlur={ev=>updEquip(e.id,{rate_day:+ev.target.value||0})}/></div>
+          <div><label>Kolejna doba (pn-czw)</label><input type="number" defaultValue={e.rate_extra_day} onBlur={ev=>updEquip(e.id,{rate_extra_day:+ev.target.value||0})}/></div>
+          <div><label>Kolejna doba (weekend)</label><input type="number" defaultValue={e.rate_extra_day_weekend} onBlur={ev=>updEquip(e.id,{rate_extra_day_weekend:+ev.target.value||0})}/></div>
+        </div>
+        <div className="row3" style={{marginBottom:8}}>
+          <div><label>Weekend — 2 doby</label><input type="number" defaultValue={e.rate_weekend} onBlur={ev=>updEquip(e.id,{rate_weekend:+ev.target.value||0})}/></div>
+          <div><label>Weekend — 3 doby</label><input type="number" defaultValue={e.rate_weekend3} onBlur={ev=>updEquip(e.id,{rate_weekend3:+ev.target.value||0})}/></div>
+          <div><label>Pakiet tygodniowy</label><input type="number" defaultValue={e.rate_week} onBlur={ev=>updEquip(e.id,{rate_week:+ev.target.value||0})}/></div>
         </div>
         <div className="row3">
-          <div><label>Pakiet weekendowy</label><input type="number" defaultValue={e.rate_weekend} onBlur={ev=>updEquip(e.id,{rate_weekend:+ev.target.value||0})}/></div>
-          <div><label>Pakiet tygodniowy</label><input type="number" defaultValue={e.rate_week} onBlur={ev=>updEquip(e.id,{rate_week:+ev.target.value||0})}/></div>
+          <div><label>Kaucja</label><input type="number" defaultValue={e.deposit} onBlur={ev=>updEquip(e.id,{deposit:+ev.target.value||0})}/></div>
           <div><label>Koszt zakupu</label><input type="number" defaultValue={e.purchase_cost} onBlur={ev=>updEquip(e.id,{purchase_cost:+ev.target.value||0})}/></div>
         </div>
       </div>))}
