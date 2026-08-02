@@ -271,6 +271,10 @@ function offerMsg(o, name, settings, equipment, packages, tiers, clients, vouche
 /* ================= APP ================= */
 function App(){
   const [tab,setTab]=useState("pulpit");
+  const [nav,setNav]=useState({});
+  const goOffer = (o)=>{ setNav({focusOfferId:o.id}); setTab("oferty"); };
+  const goCalendar = (y,m)=>{ setNav({calYm:{y,m}}); setTab("kalendarz"); };
+  const clearCalYm = ()=>setNav(n=>({...n,calYm:null}));
   const [err,setErr]=useState(null);
   const [msg,setMsg]=useState(null);
   const [loading,setLoading]=useState(true);
@@ -335,12 +339,12 @@ function App(){
         {msg && <div className="banner ok"><span>✅</span><div>{msg}</div></div>}
         {loading ? <div className="empty">Ładowanie…</div> : (
           <>
-            {tab==="pulpit" && <Pulpit {...{equipment,offers,clients,settings,setTab,vouchers}}/>}
-            {tab==="kalendarz" && <Kalendarz {...{equipment,offers,clients}}/>}
+            {tab==="pulpit" && <Pulpit {...{equipment,offers,clients,settings,setTab,vouchers,goOffer}}/>}
+            {tab==="kalendarz" && <Kalendarz {...{equipment,offers,clients,goOffer,initialYm:nav.calYm,clearCalYm}}/>}
             {tab==="klienci" && <Klienci {...{clients,setClients,offers,equipment,settings,packages,tiers,vouchers,setOffers,flash,setErr,reload,setTab}}/>}
-            {tab==="oferty" && <Oferty {...{offers,setOffers,equipment,packages,tiers,clients,setClients,settings,vouchers,setVouchers,flash,setErr,reload}}/>}
+            {tab==="oferty" && <Oferty {...{offers,setOffers,equipment,packages,tiers,clients,setClients,settings,vouchers,setVouchers,flash,setErr,reload,focusOfferId:nav.focusOfferId,clearFocus:()=>setNav(n=>({...n,focusOfferId:null}))}}/>}
             {tab==="opinie" && <Opinie {...{reviews,setReviews,clients,offers,equipment,packages,vouchers,flash,setErr}}/>}
-            {tab==="raport" && <Raport {...{offers,equipment,settings,packages,clients,vouchers,costs}}/>}
+            {tab==="raport" && <Raport {...{offers,equipment,settings,packages,clients,vouchers,costs,goCalendar}}/>}
             {tab==="ustawienia" && <Ustawienia {...{settings,setSettings,equipment,setEquipment,packages,setPackages,tiers,setTiers,costs,setCosts,flash,setErr,reload}}/>}
           </>
         )}
@@ -358,25 +362,37 @@ function App(){
 }
 
 /* ================= PULPIT ================= */
-function Pulpit({equipment,offers,clients,settings,setTab,vouchers}){
+function Pulpit({equipment,offers,clients,settings,setTab,vouchers,goOffer}){
   const today = new Date();
-  const isToday = o => o.year===today.getFullYear() && o.month===today.getMonth() && o.day===today.getDate();
-  const todayOffers = offers.filter(o=>isToday(o) && o.status!=="draft");
-  const freeCount = equipment.filter(e=>e.status==="available").length;
-  const alerts = [];
-  offers.forEach(o=>{ if(isToday(o) && o.status!=="draft"){ const eq=equipment.find(e=>e.id===o.equipment_id);
-    const c = clients.find(c=>c.phone===o.phone);
-    alerts.push({icon:"🚚", text:`Dziś: ${eq?eq.name:"—"} → ${displayName(o.phone,(c&&c.name)||o.name)}`}); } });
-  if(!alerts.length) alerts.push({icon:"✓", text:"Brak dzisiejszych dostaw/odbiorów."});
-  const todayNum = today.getFullYear()*10000+today.getMonth()*100+today.getDate();
+  const tNum = today.getFullYear()*10000+today.getMonth()*100+today.getDate();
   const dateNum = o => o.year*10000+o.month*100+o.day;
-  const upcoming = offers.filter(o=>o.status!=="draft" && !isToday(o) && dateNum(o)>todayNum)
-    .sort((a,b)=>dateNum(a)-dateNum(b)).slice(0,4);
+  const endNum = o => { const d=new Date(o.year,o.month,o.day+((o.days||1))-1); return d.getFullYear()*10000+d.getMonth()*100+d.getDate(); };
+  const live = offers.filter(o=>o.status!=="draft");
+  const deliveriesToday = live.filter(o=>dateNum(o)===tNum);
+  const pickupsToday = live.filter(o=>endNum(o)===tNum && dateNum(o)!==tNum);
+  const inProgress = live.filter(o=>dateNum(o)<tNum && endNum(o)>tNum);
+  const todayOffers = [...deliveriesToday,...pickupsToday];
+  const freeCount = equipment.filter(e=>e.status==="available").length;
+  const nameOf = o => { const c=clients.find(c=>c.phone===o.phone); return displayName(o.phone,(c&&c.name)||o.name); };
+  const eqLabel = o => { const eq=equipment.find(e=>e.id===o.equipment_id); const extra=(o.extra_equip_ids||[]).length; return (eq?eq.name:"—")+(extra?` + ${extra} (zestaw)`:""); };
+  const endLabel = o => { const e=new Date(o.year,o.month,o.day+(o.days||1)-1); return `${e.getDate()}.${e.getMonth()+1}.${e.getFullYear()}`; };
+  const alerts = [
+    ...deliveriesToday.map(o=>({icon:"🚚", text:`Dostawa dziś: ${eqLabel(o)} → ${nameOf(o)}`, o})),
+    ...pickupsToday.map(o=>({icon:"📦", text:`Odbiór dziś: ${eqLabel(o)} od ${nameOf(o)}`, o})),
+    ...inProgress.map(o=>({icon:"🔄", text:`Trwa wynajem: ${eqLabel(o)} · ${nameOf(o)} (do ${endLabel(o)})`, o})),
+  ];
+  if(!alerts.length) alerts.push({icon:"✓", text:"Brak dzisiejszych dostaw/odbiorów."});
+  const todayNum = tNum;
+  const upcoming = live.filter(o=>dateNum(o)>todayNum).sort((a,b)=>dateNum(a)-dateNum(b)).slice(0,4);
   return (
     <div>
       <div className="topbar"><div><h1>Pulpit</h1><p>Wynajem balii i sauny</p></div></div>
+      <div className="grid row2" style={{marginBottom:8}}>
+        <div className="card stat"><div className="v">{deliveriesToday.length}</div><div className="l">🚚 Dostawy dziś</div></div>
+        <div className="card stat"><div className="v">{pickupsToday.length}</div><div className="l">📦 Odbiory dziś</div></div>
+      </div>
       <div className="grid row2" style={{marginBottom:16}}>
-        <div className="card stat"><div className="v">{todayOffers.length}</div><div className="l">Dziś dostawy/odbiory</div></div>
+        <div className="card stat"><div className="v">{inProgress.length}</div><div className="l">🔄 Trwające wynajmy</div></div>
         <div className="card stat"><div className="v">{freeCount}</div><div className="l">Wolny sprzęt dziś</div></div>
       </div>
       <div style={{display:"flex",gap:10,marginBottom:20,flexWrap:"wrap"}}>
@@ -384,12 +400,12 @@ function Pulpit({equipment,offers,clients,settings,setTab,vouchers}){
         <button className="btn ghost" onClick={()=>setTab("kalendarz")}>Sprawdź dostępność</button>
       </div>
       <h3 style={{fontSize:12.5,color:"var(--muted)",textTransform:"uppercase",letterSpacing:.5,marginBottom:8}}>Wymaga uwagi</h3>
-      {alerts.map((a,i)=>(<div key={i} className="card" style={{display:"flex",gap:10,alignItems:"center",marginBottom:8,padding:"10px 14px"}}><span>{a.icon}</span><span>{a.text}</span></div>))}
+      {alerts.map((a,i)=>(<div key={i} className="card" style={{display:"flex",gap:10,alignItems:"center",marginBottom:8,padding:"10px 14px",cursor:a.o?"pointer":"default"}} onClick={()=>a.o&&goOffer(a.o)}><span>{a.icon}</span><span>{a.text}</span></div>))}
       <h3 style={{fontSize:12.5,color:"var(--muted)",textTransform:"uppercase",letterSpacing:.5,margin:"18px 0 8px"}}>Nadchodzące</h3>
       {upcoming.length===0 && <div className="empty">Brak nadchodzących zleceń.</div>}
-      {upcoming.map(o=>{ const eq=equipment.find(e=>e.id===o.equipment_id); const c=clients.find(c=>c.phone===o.phone);
-        return (<div key={o.id} className="card" style={{display:"flex",justifyContent:"space-between",marginBottom:8,padding:"10px 14px"}}>
-          <span>{eq?eq.name:"—"} · {displayName(o.phone,(c&&c.name)||o.name)}</span><span className="muted">{o.day}.{o.month+1}</span></div>); })}
+      {upcoming.map(o=>(
+        <div key={o.id} className="card" style={{display:"flex",justifyContent:"space-between",marginBottom:8,padding:"10px 14px",cursor:"pointer"}} onClick={()=>goOffer(o)}>
+          <span>{eqLabel(o)} · {nameOf(o)}</span><span className="muted">{o.day}.{o.month+1}</span></div>))}
       {(vouchers||[]).filter(v=>isVoucherUsable(v)).length>0 && <>
         <h3 style={{fontSize:12.5,color:"var(--muted)",textTransform:"uppercase",letterSpacing:.5,margin:"18px 0 8px"}}>🎁 Aktywne vouchery</h3>
         {vouchers.filter(v=>isVoucherUsable(v)).map(v=>{ const buyer=clients.find(c=>c.phone===v.buyer_phone); const st=voucherStatus(v);
@@ -403,15 +419,17 @@ function Pulpit({equipment,offers,clients,settings,setTab,vouchers}){
 }
 
 /* ================= KALENDARZ ================= */
-function Kalendarz({equipment,offers,clients}){
+function Kalendarz({equipment,offers,clients,goOffer,initialYm,clearCalYm}){
   const now = new Date();
-  const [ym,setYm]=useState({y:now.getFullYear(),m:now.getMonth()});
+  const [ym,setYm]=useState(initialYm||{y:now.getFullYear(),m:now.getMonth()});
+  useEffect(()=>{ if(initialYm){ setYm(initialYm); clearCalYm&&clearCalYm(); } },[initialYm&&initialYm.y,initialYm&&initialYm.m]);
   const first = new Date(ym.y,ym.m,1); const last = new Date(ym.y,ym.m+1,0);
   const startOffset = (first.getDay()+6)%7;
   const booked = {};
   offers.filter(o=>o.status!=="draft" && o.year===ym.y && o.month===ym.m).forEach(o=>{
     const eq = equipment.find(e=>e.id===o.equipment_id);
-    for(let d=o.day; d<o.day+(o.days||1); d++) booked[d]={color:eq?eq.color||"#153826":"#153826", shape:eq?eq.shape||"square":"square", pending:o.status==="sent", gift:!!o.voucher_code};
+    const isSet = (o.extra_equip_ids||[]).length>0;
+    for(let d=o.day; d<o.day+(o.days||1); d++) booked[d]={color:eq?eq.color||"#153826":"#153826", shape:eq?eq.shape||"square":"square", pending:o.status==="sent", gift:!!o.voucher_code, isSet, offer:o};
   });
   const cells=[]; for(let i=0;i<startOffset;i++) cells.push(null);
   for(let d=1; d<=last.getDate(); d++) cells.push(d);
@@ -436,15 +454,17 @@ function Kalendarz({equipment,offers,clients}){
             const isCyl = b && b.shape==='cylinder';
             const radius = b ? (b.shape==='round'?'50%':isCyl?'50%/30%':'0px') : '8px';
             const pending = b && b.pending;
-            return (<div key={i} className="calcell" style={{
+            return (<div key={i} className="calcell" onClick={()=>b&&b.offer&&goOffer&&goOffer(b.offer)} style={{
               background:b?b.color:(isWeekend?"#f4ecdc":"#fff"),
               color:b?"#fff":"var(--ink)",
               border:pending?`1.5px dashed ${b.color}`:(isWeekend?"1.5px solid #d8c68a":"1px solid var(--line)"),
-              borderRadius:radius,position:"relative",overflow:"hidden"
+              borderRadius:radius,position:"relative",overflow:"hidden",cursor:b?"pointer":"default",
+              boxShadow:b&&b.isSet?"inset 0 0 0 2px #fff, inset 0 0 0 3.5px "+b.color:"none"
             }}>
               {isCyl && !pending && <><span style={{position:"absolute",left:0,right:0,top:"28%",height:1,background:"rgba(255,255,255,.45)"}}/><span style={{position:"absolute",left:0,right:0,top:"68%",height:1,background:"rgba(255,255,255,.45)"}}/></>}
               <span style={{position:"relative",zIndex:1}}>{d}</span>
               {b && b.gift && <span style={{position:"absolute",top:-2,right:-1,fontSize:9,zIndex:2}}>🎁</span>}
+              {b && b.isSet && <span style={{position:"absolute",bottom:0,left:2,fontSize:8,fontWeight:700,zIndex:2,lineHeight:1}}>2+</span>}
             </div>);
           })}
         </div>
@@ -454,14 +474,16 @@ function Kalendarz({equipment,offers,clients}){
             {e.shape==='cylinder' && <><span style={{position:"absolute",left:0,right:0,top:"28%",height:1,background:"rgba(255,255,255,.45)"}}/><span style={{position:"absolute",left:0,right:0,top:"68%",height:1,background:"rgba(255,255,255,.45)"}}/></>}
             </span>{e.name}</span>))}
           <span><span style={{display:"inline-block",width:12,height:9,border:"1.5px dashed #8a8378",borderRadius:2,marginRight:5}}/>Oferta wysłana (oczekuje)</span>
+          <span><span style={{display:"inline-block",width:12,height:9,background:"#153826",boxShadow:"inset 0 0 0 1.5px #fff, inset 0 0 0 2.5px #153826",marginRight:5}}/>Zestaw (2+ sprzęty)</span>
           <span>🎁 Realizacja vouchera</span>
         </div>
         <h3 style={{fontSize:12,color:"var(--muted)",textTransform:"uppercase",marginBottom:8}}>Rezerwacje w tym miesiącu</h3>
         {monthOffers.length===0 && <div className="empty">Brak rezerwacji.</div>}
         {monthOffers.map(o=>{ const eq=equipment.find(e=>e.id===o.equipment_id); const c=clients.find(c=>c.phone===o.phone);
           const calc = computeCalc(o,equipment,{free_km:60,km_rate:2,zadatek:200},[], clients, []);
-          return (<div key={o.id} style={{padding:"8px 0",borderBottom:"1px solid var(--line)",fontSize:13}}>
-            <b>{eq?eq.name:"—"}</b> · {displayName(o.phone,(c&&c.name)||o.name)} <span className="muted">— {dateRangeLabel(o)} · {fmt(calc.total-calc.deposit)}</span></div>); })}
+          const extra=(o.extra_equip_ids||[]).length;
+          return (<div key={o.id} style={{padding:"8px 0",borderBottom:"1px solid var(--line)",fontSize:13,cursor:"pointer"}} onClick={()=>goOffer&&goOffer(o)}>
+            <b>{eq?eq.name:"—"}{extra?` + ${extra} 🔗`:""}</b> · {displayName(o.phone,(c&&c.name)||o.name)} <span className="muted">— {dateRangeLabel(o)} · {fmt(calc.total-calc.deposit)}</span></div>); })}
       </div>
     </div>
   );
@@ -960,9 +982,10 @@ function OfferDetailModal({offer,onClose,equipment,packages,tiers,clients,settin
   );
 }
 
-function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,settings,vouchers,setVouchers,flash,setErr}){
+function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,settings,vouchers,setVouchers,flash,setErr,focusOfferId,clearFocus}){
   const [modal,setModal]=useState(null); // 'new' or offer object for detail
   const [editingOffer,setEditingOffer]=useState(null);
+  useEffect(()=>{ if(focusOfferId){ const o=offers.find(x=>x.id===focusOfferId); if(o){ setModal(o); clearFocus&&clearFocus(); } } },[focusOfferId]);
   const [view,setView]=useState("active"); // active | expired | done
   const [showDeposit,setShowDeposit]=useState(false);
   const [voucherModal,setVoucherModal]=useState(false);
@@ -1397,7 +1420,7 @@ function Opinie({reviews,setReviews,clients,offers,equipment,packages,vouchers,f
 }
 
 /* ================= RAPORT ================= */
-function Raport({offers,equipment,settings,packages,clients,vouchers,costs}){
+function Raport({offers,equipment,settings,packages,clients,vouchers,costs,goCalendar}){
   const [period,setPeriod]=useState("month");
   const [showRoi,setShowRoi]=useState(false);
   const monthlyCosts = costs.filter(c=>c.period==="monthly").reduce((s,c)=>s+(+c.amount||0),0);
@@ -1408,22 +1431,41 @@ function Raport({offers,equipment,settings,packages,clients,vouchers,costs}){
   const realized = offers.filter(o=>o.status==="done"||o.status==="accepted");
   const today = new Date();
 
+  const isSet = o => (o.extra_equip_ids||[]).length>0;
+  const setLabel = o => { const ids=[o.equipment_id,...(o.extra_equip_ids||[])]; return ids.map(id=>{const e=equipment.find(x=>x.id===id); return e?e.name:"?";}).sort().join(" + "); };
   const perEquipment = equipment.map(e=>{
-    const eqOffers = realized.filter(o=>o.equipment_id===e.id);
+    const eqOffers = realized.filter(o=>o.equipment_id===e.id && !isSet(o));
     const revenue = revenueForOffers(eqOffers);
     const roiPct = e.purchase_cost>0 ? Math.round((revenue/e.purchase_cost)*100) : 0;
     return {name:e.name, revenue, count:eqOffers.length, roiPct, purchase_cost:e.purchase_cost||0};
   }).sort((a,b)=>b.revenue-a.revenue);
 
+  const setOffers2 = realized.filter(isSet);
+  const setGroups = {};
+  setOffers2.forEach(o=>{ const k=setLabel(o); (setGroups[k]=setGroups[k]||[]).push(o); });
+  const perSet = Object.keys(setGroups).map(k=>{
+    const list=setGroups[k]; const revenue=revenueForOffers(list);
+    const invest=[...new Set([list[0].equipment_id,...(list[0].extra_equip_ids||[])])].reduce((s,id)=>{const e=equipment.find(x=>x.id===id); return s+(+(e&&e.purchase_cost)||0);},0);
+    return {name:k, revenue, count:list.length, roiPct: invest>0?Math.round((revenue/invest)*100):0, purchase_cost:invest};
+  }).sort((a,b)=>b.revenue-a.revenue);
+  const setRevenue = revenueForOffers(setOffers2);
+  const singleRevenue = revenueForOffers(realized.filter(o=>!isSet(o)));
+  const setSharePct = (setRevenue+singleRevenue)>0 ? Math.round(setRevenue/(setRevenue+singleRevenue)*100) : 0;
+
   const periodKey = o => period==="year" ? `${o.year}` : period==="quarter" ? `${o.year}-Q${Math.floor(o.month/3)+1}` : `${o.year}-${o.month}`;
   const periodLabel = key => { if(period==="year") return key; if(period==="quarter"){ const [y,q]=key.split("-Q"); return `${q} kw. ${y}`; } const [y,m]=key.split("-").map(Number); return `${MONTHS[m]} ${y}`; };
   const byPeriod={}; realized.forEach(o=>{ const k=periodKey(o); (byPeriod[k]=byPeriod[k]||[]).push(o); });
+  const keyToYm = key => { if(period==="month"){ const [y,m]=key.split("-").map(Number); return {y,m}; } if(period==="quarter"){ const [y,q]=key.split("-Q"); return {y:+y,m:(+q-1)*3}; } return {y:+key,m:0}; };
   const periodSummary = Object.keys(byPeriod).sort().map(k=>{
     const list=byPeriod[k]; const rev=revenueForOffers(list); const net=rev-monthlyCosts;
-    const byEq={}; list.forEach(o=>{ const calc=computeCalc(o,equipment,settings,packages,clients,vouchers); byEq[o.equipment_id]=(byEq[o.equipment_id]||0)+netOf(o,calc); });
+    const sets=list.filter(isSet); const setRev=revenueForOffers(sets);
+    const planList=list.filter(o=>o.status==="accepted"), doneList=list.filter(o=>o.status==="done");
+    const byEq={}; list.forEach(o=>{ const calc=computeCalc(o,equipment,settings,packages,clients,vouchers); const k=isSet(o)?("SET:"+setLabel(o)):o.equipment_id; byEq[k]=(byEq[k]||0)+netOf(o,calc); });
     let bestId=null,bestRev=-1; Object.entries(byEq).forEach(([id,r])=>{ if(r>bestRev){bestRev=r;bestId=id;} });
-    const bestEq = equipment.find(e=>e.id===bestId);
-    return {label:periodLabel(k), revenue:rev, net, count:list.length, bestName:bestEq?bestEq.name:"—", bestRev:bestRev>0?bestRev:0};
+    const bestName = bestId && bestId.startsWith("SET:") ? "🔗 "+bestId.slice(4) : ((equipment.find(e=>e.id===bestId)||{}).name||"—");
+    return {label:periodLabel(k), ym:keyToYm(k), revenue:rev, net, count:list.length, setCount:sets.length, setRev,
+      planRev:revenueForOffers(planList), planCount:planList.length, doneRev:revenueForOffers(doneList), doneCount:doneList.length,
+      bestName, bestRev:bestRev>0?bestRev:0};
   }).reverse();
 
   const curKey = periodKey({year:today.getFullYear(),month:today.getMonth()});
@@ -1454,18 +1496,39 @@ function Raport({offers,equipment,settings,packages,clients,vouchers,costs}){
         <div className="calc-total"><span>ROI</span><span>{roiPct}%</span></div>
       </div>
       <button className="btn ghost sm" style={{marginBottom:12}} onClick={()=>setShowRoi(v=>!v)}>{showRoi?"▾ Ukryj podział na sprzęt":"▸ Pokaż ROI per sprzęt"}</button>
-      {showRoi && perEquipment.map((e,i)=>(<div key={i} className="card" style={{marginBottom:8}}>
-        <div style={{display:"flex",justifyContent:"space-between",fontWeight:700,color:"var(--green-d)"}}><span>{e.name}</span><span>{e.roiPct}%</span></div>
-        <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"var(--muted)",marginTop:3}}><span>Przychód: {fmt(e.revenue)} · {e.count} zlec.</span><span>Inwestycja: {fmt(e.purchase_cost)}</span></div>
-      </div>))}
+      {showRoi && <>
+        {perEquipment.map((e,i)=>(<div key={i} className="card" style={{marginBottom:8}}>
+          <div style={{display:"flex",justifyContent:"space-between",fontWeight:700,color:"var(--green-d)"}}><span>{e.name}</span><span>{e.roiPct}%</span></div>
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"var(--muted)",marginTop:3}}><span>Przychód: {fmt(e.revenue)} · {e.count} zlec.</span><span>Inwestycja: {fmt(e.purchase_cost)}</span></div>
+        </div>))}
+        {perSet.length>0 && <>
+          <h4 style={{fontSize:11.5,color:"var(--muted)",textTransform:"uppercase",margin:"12px 0 6px"}}>🔗 Zestawy</h4>
+          {perSet.map((s,i)=>(<div key={i} className="card" style={{marginBottom:8,borderLeft:"3px solid var(--gold)"}}>
+            <div style={{display:"flex",justifyContent:"space-between",fontWeight:700,color:"var(--green-d)"}}><span>{s.name}</span><span>{s.roiPct}%</span></div>
+            <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"var(--muted)",marginTop:3}}><span>Przychód: {fmt(s.revenue)} · {s.count} zlec.</span><span>Inwestycja: {fmt(s.purchase_cost)}</span></div>
+          </div>))}
+        </>}
+      </>}
+      <div className="card" style={{marginBottom:8,background:"#faf9f5"}}>
+        <div style={{display:"flex",justifyContent:"space-between",fontWeight:700,color:"var(--green-d)",marginBottom:4}}><span>🔗 Zestawy vs pojedynczy sprzęt</span><span>{setSharePct}%</span></div>
+        <div className="calc-line"><span>Zestawy ({setOffers2.length} zlec.)</span><span>{fmt(setRevenue)}</span></div>
+        <div className="calc-line"><span>Pojedynczy sprzęt ({realized.length-setOffers2.length} zlec.)</span><span>{fmt(singleRevenue)}</span></div>
+        <div style={{height:8,borderRadius:4,background:"var(--line)",overflow:"hidden",marginTop:6}}><div style={{width:setSharePct+"%",height:"100%",background:"var(--gold)"}}/></div>
+        <div className="muted" style={{fontSize:11,marginTop:4}}>Udział zestawów w przychodzie</div>
+      </div>
       <h3 style={{fontSize:12,color:"var(--muted)",textTransform:"uppercase",margin:"18px 0 8px"}}>Podsumowanie okresowe</h3>
       <div style={{display:"flex",gap:6,marginBottom:10}}>
         {["month","quarter","year"].map(p=>(<button key={p} className={"btn sm "+(period===p?"primary":"ghost")} onClick={()=>setPeriod(p)}>{p==="month"?"Miesiąc":p==="quarter"?"Kwartał":"Rok"}</button>))}
       </div>
       {periodSummary.length===0 && <div className="empty">Brak zrealizowanych/zaakceptowanych zleceń do podsumowania.</div>}
-      {periodSummary.map((m,i)=>(<div key={i} className="card" style={{marginBottom:8}}>
-        <div style={{display:"flex",justifyContent:"space-between",fontWeight:700,color:"var(--green-d)"}}><span>{m.label}</span><span className="muted" style={{fontWeight:400}}>{m.count} zlec.</span></div>
+      {periodSummary.map((m,i)=>(<div key={i} className="card" style={{marginBottom:8,cursor:"pointer"}} onClick={()=>goCalendar&&goCalendar(m.ym.y,m.ym.m)}>
+        <div style={{display:"flex",justifyContent:"space-between",fontWeight:700,color:"var(--green-d)"}}><span>{m.label} <span style={{fontSize:11,fontWeight:400,color:"var(--muted)"}}>→ kalendarz</span></span><span className="muted" style={{fontWeight:400}}>{m.count} zlec.{m.setCount?` · 🔗 ${m.setCount}`:""}</span></div>
         <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginTop:3}}><span className="muted">Przychód: {fmt(m.revenue)}</span><span style={{color:m.net>=0?"var(--green-d)":"#b3261e",fontWeight:700}}>Netto: {fmt(m.net)}</span></div>
+        <div style={{display:"flex",justifyContent:"space-between",fontSize:11.5,marginTop:4,paddingTop:4,borderTop:"1px solid var(--line)"}}>
+          <span style={{color:"#3b6fd6"}}>📅 Plan: {fmt(m.planRev)} ({m.planCount})</span>
+          <span style={{color:"var(--green-d)"}}>✅ Zrealizowane: {fmt(m.doneRev)} ({m.doneCount})</span>
+        </div>
+        {m.setCount>0 && <div style={{fontSize:11,color:"#9a6b00",marginTop:3}}>🔗 Zestawy: {m.setCount} · {fmt(m.setRev)}</div>}
         {m.bestRev>0 && <div style={{fontSize:11,color:"#9a6b00",marginTop:3}}>🏆 Najlepszy: {m.bestName} ({fmt(m.bestRev)})</div>}
       </div>))}
       <div className="muted" style={{fontSize:11,marginTop:10}}>Koszty edytujesz w Ustawienia → Koszty stałe. Koszt zakupu sprzętu edytujesz przy każdej pozycji w Ustawienia → Sprzęt.</div>
