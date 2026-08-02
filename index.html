@@ -130,6 +130,14 @@ const WEEKDAYS = ['Pn','Wt','Śr','Cz','Pt','So','Nd'];
 const COLOR_SWATCHES = ['#153826','#3a6350','#c9a227','#8a5a3b','#5b4b8a','#2f6f8f','#a13d3d'];
 const LOGO = "https://ugc.production.linktr.ee/dce7fc8e-f896-412b-b1b8-4a47ce1d35e5_1000001073.jpeg";
 
+function isInProgress(o){
+  if(!o || o.status==="draft" || o.status==="done") return false;
+  const t=new Date(); const tN=t.getFullYear()*10000+t.getMonth()*100+t.getDate();
+  const s=o.year*10000+o.month*100+o.day;
+  const e=new Date(o.year,o.month,o.day+(o.days||1)-1);
+  return s<=tN && tN<=(e.getFullYear()*10000+e.getMonth()*100+e.getDate());
+}
+
 function referralCode(client){
   if(typeof client==='object' && client) return client.referral_code || 'GS'+String(client.phone||'').replace(/\D/g,'').slice(-4);
   return 'GS'+String(client||'').replace(/\D/g,'').slice(-4);
@@ -443,9 +451,16 @@ function Kalendarz({equipment,offers,clients,goOffer,initialYm,clearCalYm}){
   const startOffset = (first.getDay()+6)%7;
   const booked = {};
   offers.filter(o=>o.status!=="draft" && o.year===ym.y && o.month===ym.m).forEach(o=>{
-    const eq = equipment.find(e=>e.id===o.equipment_id);
-    const isSet = (o.extra_equip_ids||[]).length>0;
-    for(let d=o.day; d<o.day+(o.days||1); d++) booked[d]={color:eq?eq.color||"#153826":"#153826", shape:eq?eq.shape||"square":"square", pending:o.status==="sent", gift:!!o.voucher_code, isSet, offer:o};
+    const ids = [o.equipment_id,...(o.extra_equip_ids||[])];
+    const eqs = ids.map(id=>equipment.find(e=>e.id===id)).filter(Boolean);
+    const eq = eqs[0];
+    const isSet = eqs.length>1;
+    for(let d=o.day; d<o.day+(o.days||1); d++){
+      const prev = booked[d];
+      const colors = eqs.map(e=>e.color||"#153826");
+      booked[d]= prev ? {...prev, colors:[...new Set([...prev.colors,...colors])], isSet: prev.isSet||isSet||([...new Set([...prev.colors,...colors])].length>1)}
+        : {colors, shape:eq?eq.shape||"square":"square", pending:o.status==="sent", gift:!!o.voucher_code, isSet, offer:o};
+    }
   });
   const cells=[]; for(let i=0;i<startOffset;i++) cells.push(null);
   for(let d=1; d<=last.getDate(); d++) cells.push(d);
@@ -470,17 +485,21 @@ function Kalendarz({equipment,offers,clients,goOffer,initialYm,clearCalYm}){
             const isCyl = b && b.shape==='cylinder';
             const radius = b ? (b.shape==='round'?'50%':isCyl?'50%/30%':'0px') : '8px';
             const pending = b && b.pending;
+            const c0 = b ? b.colors[0] : null;
+            const bg = b ? (b.colors.length>1
+              ? `linear-gradient(135deg, ${b.colors.map((c,ci)=>`${c} ${ci*100/b.colors.length}%, ${c} ${(ci+1)*100/b.colors.length}%`).join(', ')})`
+              : c0) : (isWeekend?"#f4ecdc":"#fff");
             return (<div key={i} className="calcell" onClick={()=>b&&b.offer&&goOffer&&goOffer(b.offer)} style={{
-              background:b?b.color:(isWeekend?"#f4ecdc":"#fff"),
+              background:bg,
               color:b?"#fff":"var(--ink)",
-              border:pending?`1.5px dashed ${b.color}`:(isWeekend?"1.5px solid #d8c68a":"1px solid var(--line)"),
+              border:pending?`1.5px dashed ${c0}`:(isWeekend?"1.5px solid #d8c68a":"1px solid var(--line)"),
               borderRadius:radius,position:"relative",overflow:"hidden",cursor:b?"pointer":"default",
-              boxShadow:b&&b.isSet?"inset 0 0 0 2px #fff, inset 0 0 0 3.5px "+b.color:"none"
+              boxShadow:b&&b.isSet?"inset 0 0 0 2px #fff":"none"
             }}>
               {isCyl && !pending && <><span style={{position:"absolute",left:0,right:0,top:"28%",height:1,background:"rgba(255,255,255,.45)"}}/><span style={{position:"absolute",left:0,right:0,top:"68%",height:1,background:"rgba(255,255,255,.45)"}}/></>}
-              <span style={{position:"relative",zIndex:1}}>{d}</span>
+              <span style={{position:"relative",zIndex:1,textShadow:b?"0 1px 2px rgba(0,0,0,.45)":"none"}}>{d}</span>
               {b && b.gift && <span style={{position:"absolute",top:-2,right:-1,fontSize:9,zIndex:2}}>🎁</span>}
-              {b && b.isSet && <span style={{position:"absolute",bottom:0,left:2,fontSize:8,fontWeight:700,zIndex:2,lineHeight:1}}>2+</span>}
+              {b && b.isSet && <span style={{position:"absolute",bottom:0,left:2,fontSize:8,fontWeight:700,zIndex:2,lineHeight:1,textShadow:"0 1px 2px rgba(0,0,0,.5)"}}>🔗</span>}
             </div>);
           })}
         </div>
@@ -490,7 +509,7 @@ function Kalendarz({equipment,offers,clients,goOffer,initialYm,clearCalYm}){
             {e.shape==='cylinder' && <><span style={{position:"absolute",left:0,right:0,top:"28%",height:1,background:"rgba(255,255,255,.45)"}}/><span style={{position:"absolute",left:0,right:0,top:"68%",height:1,background:"rgba(255,255,255,.45)"}}/></>}
             </span>{e.name}</span>))}
           <span><span style={{display:"inline-block",width:12,height:9,border:"1.5px dashed #8a8378",borderRadius:2,marginRight:5}}/>Oferta wysłana (oczekuje)</span>
-          <span><span style={{display:"inline-block",width:12,height:9,background:"#153826",boxShadow:"inset 0 0 0 1.5px #fff, inset 0 0 0 2.5px #153826",marginRight:5}}/>Zestaw (2+ sprzęty)</span>
+          <span><span style={{display:"inline-block",width:12,height:9,background:"linear-gradient(135deg,#153826 0%,#153826 50%,#c9a227 50%,#c9a227 100%)",boxShadow:"inset 0 0 0 1.5px #fff",marginRight:5}}/>🔗 Zestaw (2+ sprzęty)</span>
           <span>🎁 Realizacja vouchera</span>
         </div>
         <h3 style={{fontSize:12,color:"var(--muted)",textTransform:"uppercase",marginBottom:8}}>Rezerwacje w tym miesiącu</h3>
@@ -592,7 +611,7 @@ function Klienci({clients,setClients,offers,equipment,settings,packages,tiers,vo
         {history.map(o=>{ const eq=equipment.find(e=>e.id===o.equipment_id);
           const calc = computeCalc(o,equipment,settings,packages,clients,vouchers);
           const stMap={draft:["Robocza","b-grey"],sent:["Wysłana","b-blue"],accepted:["Zaakceptowana","b-green"],done:["Zrealizowana","b-amber"]};
-          const st = stMap[o.status]||stMap.draft;
+          const st = isInProgress(o) ? ["🔄 W trakcie najmu","b-blue"] : (stMap[o.status]||stMap.draft);
           return (<div key={o.id} className="card" style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
             <div><b>{eq?eq.name:"—"}{calc.extraEquip.length>0?` + ${calc.extraEquip.map(e=>e.name).join(" + ")}`:""}</b><div className="muted" style={{fontSize:12}}>{dateRangeLabel(o)}</div></div>
             <div style={{textAlign:"right"}}><span className={"badge "+st[1]}>{st[0]}</span><div style={{fontWeight:700}}>{fmt(calc.total-calc.deposit)}</div></div>
@@ -958,7 +977,7 @@ function OfferDetailModal({offer,onClose,equipment,packages,tiers,clients,settin
   const addonNames = (offer.addon_ids||[]).map(id=>(packages.find(p=>p.id===id)||{}).name).filter(Boolean);
   const customNames = (offer.custom_items||[]).filter(c=>c.label).map(c=>`${c.label} — ${fmt(c.price)}`);
   const stMap={draft:["Robocza","b-grey"],sent:["Wysłana","b-blue"],accepted:["Zaakceptowana","b-green"],done:["Zrealizowana","b-amber"]};
-  const st = stMap[offer.status]||stMap.draft;
+  const st = isInProgress(offer) ? ["🔄 W trakcie najmu","b-blue"] : (stMap[offer.status]||stMap.draft);
   return (
     <div className="overlay" onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
       <div className="modal">
@@ -1197,7 +1216,8 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
         const calc = computeCalc(o,equipment,settings,packages,clients,vouchers);
         const expired = isExpired(o);
         const stMap={draft:["Robocza","b-grey","Wyślij"],sent:["Wysłana","b-blue","Akceptuj"],accepted:["Zaakceptowana","b-green","Zrealizowano"],done:["Zrealizowana","b-amber",null]};
-        const st = stMap[o.status]||stMap.draft;
+        const base = stMap[o.status]||stMap.draft;
+        const st = isInProgress(o) ? ["🔄 W trakcie najmu","b-blue",base[2]] : base;
         const hoursLeft = o.expires_at ? Math.max(0,Math.round((new Date(o.expires_at)-new Date())/3600000)) : null;
         return (<div key={o.id} className="card" style={{marginBottom:10,cursor:"pointer"}} onClick={()=>setModal(o)}>
           <div style={{display:"flex",justifyContent:"space-between"}}>
