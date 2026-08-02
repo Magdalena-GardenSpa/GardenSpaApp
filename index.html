@@ -139,6 +139,13 @@ function cityOnly(v){
   return s.replace(/^(ul\.|ulica|al\.|os\.)\s*/i,"").trim();
 }
 
+function hasEnded(o){
+  if(!o) return false;
+  const t=new Date(); const tN=t.getFullYear()*10000+t.getMonth()*100+t.getDate();
+  const e=new Date(o.year,o.month,o.day+(o.days||1)-1);
+  return (e.getFullYear()*10000+e.getMonth()*100+e.getDate()) < tN;
+}
+
 function isInProgress(o){
   if(!o || o.status==="draft" || o.status==="done") return false;
   const t=new Date(); const tN=t.getFullYear()*10000+t.getMonth()*100+t.getDate();
@@ -1147,6 +1154,11 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
     catch(ex){ setErr(String(ex.message||ex)); }
   };
 
+  const restoreOffer = async (o) => {
+    try{ await sbUpdate("gs_offers","id",o.id,{status:"accepted"}); setOffers(p=>p.map(x=>x.id===o.id?{...x,status:"accepted"}:x)); flash("Przywrócono do aktywnych."); }
+    catch(ex){ setErr(String(ex.message||ex)); }
+  };
+
   const advance = async (o) => {
     const order=["draft","sent","accepted","done"]; const i=order.indexOf(o.status); if(i>=order.length-1) return;
     const ns=order[i+1];
@@ -1255,7 +1267,8 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
             <span className="chip" onClick={()=>openShare(o,"wa")}>🟢 WhatsApp</span>
             <span className="chip" onClick={()=>openShare(o,"sms")}>💬 SMS</span>
             <span className="chip" onClick={()=>openShare(o,"msg")}>📩 Messenger</span>
-            {st[2] && !expired && <span className="chip on" onClick={()=>{ if(o.status==="draft") markSent(o); else advance(o); }}>▸ {st[2]}</span>}
+            {st[2] && !expired && <span className="chip on" onClick={()=>{ if(o.status==="draft") markSent(o); else if(o.status==="accepted" && !hasEnded(o)){ if(confirm("Ten wynajem jeszcze się nie zakończył ("+dateRangeLabel(o)+"). Na pewno oznaczyć jako zrealizowany i przenieść do archiwum?")) advance(o); } else advance(o); }}>▸ {st[2]}</span>}
+            {o.status==="done" && <span className="chip" onClick={()=>restoreOffer(o)}>↩ Przywróć do aktywnych</span>}
             {expired && <span className="chip on" onClick={()=>refreshExpiry(o)}>🔄 Odśwież warunki</span>}
           </div>
         </div>); })}
