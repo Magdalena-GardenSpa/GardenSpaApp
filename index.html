@@ -142,7 +142,7 @@ function cityOnly(v){
 function hasEnded(o){
   if(!o) return false;
   const t=new Date(); const tN=t.getFullYear()*10000+t.getMonth()*100+t.getDate();
-  const e=new Date(o.year,o.month,o.day+(o.days||1)-1);
+  const e=new Date(o.year,o.month,o.day+(o.days||1));
   return (e.getFullYear()*10000+e.getMonth()*100+e.getDate()) < tN;
 }
 
@@ -150,7 +150,7 @@ function isInProgress(o){
   if(!o || o.status==="draft" || o.status==="done") return false;
   const t=new Date(); const tN=t.getFullYear()*10000+t.getMonth()*100+t.getDate();
   const s=o.year*10000+o.month*100+o.day;
-  const e=new Date(o.year,o.month,o.day+(o.days||1)-1);
+  const e=new Date(o.year,o.month,o.day+(o.days||1));
   return s<=tN && tN<=(e.getFullYear()*10000+e.getMonth()*100+e.getDate());
 }
 
@@ -171,8 +171,7 @@ function paymentLabel(p){ return p==="paid_full"?"Opłacony w całości":p==="de
 function dateRangeLabel(o){
   const start = new Date(o.year, o.month, o.day);
   const days = o.days||1;
-  if(days<=1) return `${o.day}.${o.month+1}.${o.year}`;
-  const end = new Date(o.year, o.month, o.day + days - 1);
+  const end = new Date(o.year, o.month, o.day + days);
   const sameMonth = start.getMonth()===end.getMonth() && start.getFullYear()===end.getFullYear();
   if(sameMonth) return `${start.getDate()}-${end.getDate()}.${o.month+1}.${o.year}`;
   return `${start.getDate()}.${start.getMonth()+1} - ${end.getDate()}.${end.getMonth()+1}.${end.getFullYear()}`;
@@ -393,7 +392,7 @@ function Pulpit({equipment,offers,clients,settings,setTab,vouchers,goOffer}){
   const today = new Date();
   const tNum = today.getFullYear()*10000+today.getMonth()*100+today.getDate();
   const dateNum = o => o.year*10000+o.month*100+o.day;
-  const endNum = o => { const d=new Date(o.year,o.month,o.day+((o.days||1))-1); return d.getFullYear()*10000+d.getMonth()*100+d.getDate(); };
+  const endNum = o => { const d=new Date(o.year,o.month,o.day+((o.days||1))); return d.getFullYear()*10000+d.getMonth()*100+d.getDate(); };
   const live = offers.filter(o=>o.status!=="draft");
   const deliveriesToday = live.filter(o=>dateNum(o)===tNum);
   const pickupsToday = live.filter(o=>endNum(o)===tNum && dateNum(o)!==tNum);
@@ -404,7 +403,7 @@ function Pulpit({equipment,offers,clients,settings,setTab,vouchers,goOffer}){
   const freeCount = freeEquip.length;
   const nameOf = o => { const c=clients.find(c=>c.phone===o.phone); return displayName(o.phone,(c&&c.name)||o.name); };
   const eqLabel = o => { const eq=equipment.find(e=>e.id===o.equipment_id); const extra=(o.extra_equip_ids||[]).length; return (eq?eq.name:"—")+(extra?` + ${extra} (zestaw)`:""); };
-  const endLabel = o => { const e=new Date(o.year,o.month,o.day+(o.days||1)-1); return `${e.getDate()}.${e.getMonth()+1}.${e.getFullYear()}`; };
+  const endLabel = o => { const e=new Date(o.year,o.month,o.day+(o.days||1)); return `${e.getDate()}.${e.getMonth()+1}.${e.getFullYear()}`; };
   const alerts = [
     ...deliveriesToday.map(o=>({icon:"🚚", text:`Dostawa dziś: ${eqLabel(o)} → ${nameOf(o)}`, o})),
     ...pickupsToday.map(o=>({icon:"📦", text:`Odbiór dziś: ${eqLabel(o)} od ${nameOf(o)}`, o})),
@@ -473,7 +472,7 @@ function Kalendarz({equipment,offers,clients,goOffer,initialYm,clearCalYm}){
     const eqs = ids.map(id=>equipment.find(e=>e.id===id)).filter(Boolean);
     const eq = eqs[0];
     const isSet = eqs.length>1;
-    for(let d=o.day; d<o.day+(o.days||1); d++){
+    for(let d=o.day; d<=o.day+(o.days||1); d++){
       const prev = booked[d];
       const colors = eqs.map(e=>e.color||"#153826");
       booked[d]= prev ? {...prev, colors:[...new Set([...prev.colors,...colors])], isSet: prev.isSet||isSet||([...new Set([...prev.colors,...colors])].length>1)}
@@ -801,8 +800,8 @@ function OfferFormModal({onClose, initial, equipment, packages, tiers, clients, 
               </div>
             </>}
             <div className="row2">
-              <div className="field"><label>Od (data przyjazdu)</label><input type="date" value={`${f.year}-${String(f.month+1).padStart(2,'0')}-${String(f.day).padStart(2,'0')}`} onChange={e=>{ const [y,m,d]=e.target.value.split('-').map(Number); const start=new Date(y,m-1,d); const end=new Date(f.year,f.month,f.day+(f.days||f.qty||1)-1); const days=Math.max(1,Math.round((end-start)/86400000)+1); setF(p=>({...p,year:y,month:m-1,day:d,days,qty:days})); }}/></div>
-              <div className="field"><label>Do (data odbioru)</label><input type="date" value={(()=>{const d=new Date(f.year,f.month,f.day+(f.days||f.qty||1)-1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;})()} onChange={e=>{ const [y,m,d]=e.target.value.split('-').map(Number); const end=new Date(y,m-1,d); const start=new Date(f.year,f.month,f.day); const days=Math.max(1,Math.round((end-start)/86400000)+1); setF(p=>({...p,days,qty:days})); }}/></div>
+              <div className="field"><label>Od (data przyjazdu)</label><input type="date" value={`${f.year}-${String(f.month+1).padStart(2,'0')}-${String(f.day).padStart(2,'0')}`} onChange={e=>{ const [y,m,d]=e.target.value.split('-').map(Number); const start=new Date(y,m-1,d); const end=new Date(f.year,f.month,f.day+(f.days||f.qty||1)); const days=Math.max(1,Math.round((end-start)/86400000)); setF(p=>({...p,year:y,month:m-1,day:d,days,qty:days})); }}/></div>
+              <div className="field"><label>Do (data odbioru)</label><input type="date" value={(()=>{const d=new Date(f.year,f.month,f.day+(f.days||f.qty||1)); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;})()} onChange={e=>{ const [y,m,d]=e.target.value.split('-').map(Number); const end=new Date(y,m-1,d); const start=new Date(f.year,f.month,f.day); const days=Math.max(1,Math.round((end-start)/86400000)); setF(p=>({...p,days,qty:days})); }}/></div>
             </div>
             <div className="row2">
               <div className="field"><label>Za ile — wynajem, bez kaucji (zł){f.extra_equip_ids.length>0?" (suma zestawu)":""}</label>
@@ -909,8 +908,8 @@ function OfferFormModal({onClose, initial, equipment, packages, tiers, clients, 
         </div>
         <div className="row3">
           <div className="field"><label>Data od</label><input type="date" value={`${f.year}-${String(f.month+1).padStart(2,'0')}-${String(f.day).padStart(2,'0')}`} onChange={e=>{ const [y,m,d]=e.target.value.split('-').map(Number); setF(p=>({...p,year:y,month:m-1,day:d})); }}/></div>
-          <div className="field"><label>Data do</label><input type="date" value={(()=>{const e2=new Date(f.year,f.month,f.day+(+f.qty||1)-1); return `${e2.getFullYear()}-${String(e2.getMonth()+1).padStart(2,'0')}-${String(e2.getDate()).padStart(2,'0')}`;})()} onChange={e=>{ const [y,m,d]=e.target.value.split('-').map(Number); const end=new Date(y,m-1,d), start=new Date(f.year,f.month,f.day); const days=Math.max(1,Math.round((end-start)/86400000)+1); set("qty",days); }}/></div>
-          <div className="field"><label>Ilość dób</label><input type="number" min="1" value={f.qty} onChange={e=>set("qty",+e.target.value||1)}/></div>
+          <div className="field"><label>Data do</label><input type="date" value={(()=>{const e2=new Date(f.year,f.month,f.day+(+(f.days??f.qty)||1)); return `${e2.getFullYear()}-${String(e2.getMonth()+1).padStart(2,'0')}-${String(e2.getDate()).padStart(2,'0')}`;})()} onChange={e=>{ const [y,m,d]=e.target.value.split('-').map(Number); const end=new Date(y,m-1,d), start=new Date(f.year,f.month,f.day); const days=Math.max(1,Math.round((end-start)/86400000)); setF(p=>({...p,days,qty:days})); }}/></div>
+          <div className="field"><label>Ilość dób</label><input type="number" min="1" value={f.days??f.qty} onChange={e=>{ const days=+e.target.value||1; setF(p=>({...p,days,qty:days})); }}/></div>
         </div>
         <div className="row2">
           <div className="field"><label>Odległość od bazy (km, w 1 stronę)</label><input type="number" value={f.km} onChange={e=>set("km",+e.target.value||0)}/></div>
@@ -1273,7 +1272,7 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
           </div>
         </div>); })}
 
-      {(modal==="new"||editingOffer) && <OfferFormModal offers={offers} onClose={()=>{setModal(null);setEditingOffer(null);}} initial={editingOffer||emptyForm(settings)} equipment={equipment} packages={packages} tiers={tiers} clients={clients} settings={settings} vouchers={vouchers} onSave={saveOffer}/>}
+      {(modal==="new"||editingOffer) && <OfferFormModal offers={offers} onClose={()=>{setModal(null);setEditingOffer(null);}} initial={editingOffer?{...editingOffer,days:editingOffer.days??editingOffer.qty??1,qty:editingOffer.days??editingOffer.qty??1}:emptyForm(settings)} equipment={equipment} packages={packages} tiers={tiers} clients={clients} settings={settings} vouchers={vouchers} onSave={saveOffer}/>}
       {modal && modal!=="new" && <OfferDetailModal offer={modal} onClose={()=>setModal(null)} equipment={equipment} packages={packages} tiers={tiers} clients={clients} settings={settings} vouchers={vouchers} onToggleZadatek={toggleZadatek} onEdit={()=>{setEditingOffer(modal);setModal(null);}} onDelete={()=>delOffer(modal)}/>}
       {voucherModal && <VoucherModal onClose={()=>setVoucherModal(false)} settings={settings} clients={clients} equipment={equipment} offers={offers} setOffers={setOffers} setErr={setErr} flash={flash} setVouchers={setVouchers}/>}
       {voucherEdit && <VoucherModal onClose={()=>setVoucherEdit(null)} initial={voucherEdit} settings={settings} clients={clients} equipment={equipment} offers={offers} setOffers={setOffers} setErr={setErr} flash={flash} setVouchers={setVouchers}/>}
