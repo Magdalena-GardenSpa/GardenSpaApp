@@ -1099,7 +1099,7 @@ function OfferFormModal({onClose, initial, equipment, packages, tiers, clients, 
   );
 }
 
-function OfferDetailModal({offer,onClose,equipment,packages,tiers,clients,settings,vouchers,onToggleZadatek,onEdit,onDelete}){
+function OfferDetailModal({offer,onClose,equipment,packages,tiers,clients,settings,vouchers,onToggleZadatek,onEdit,onDelete,onExtend}){
   const eq = equipment.find(e=>e.id===offer.equipment_id);
   const calc = computeCalc(offer,equipment,settings,packages,clients,vouchers);
   const c = clients.find(c=>c.phone===offer.phone);
@@ -1137,6 +1137,7 @@ function OfferDetailModal({offer,onClose,equipment,packages,tiers,clients,settin
         <div className="card" style={{marginTop:12,cursor:"pointer",background:offer.zadatek_paid?"var(--green-l)":"#f6f4ee"}} onClick={()=>onToggleZadatek(offer)}>
           <b style={{color:offer.zadatek_paid?"var(--green-d)":"var(--muted)"}}>{offer.zadatek_paid?"✅ Zadatek wpłacony":"⬜ Oznacz zadatek jako wpłacony"}</b>
         </div>
+        {isInProgress(offer) && onExtend && <button className="btn" style={{marginTop:12,width:"100%",background:"#fdf0d9",color:"#9a6b00",fontWeight:700}} onClick={onExtend}>➕ Przedłuż wynajem</button>}
         <div style={{display:"flex",gap:8,marginTop:12}}>
           <button className="btn ghost" style={{flex:1}} onClick={onEdit}>✏️ Edytuj</button>
           <button className="btn ghost" style={{flex:1,color:"#b3261e",borderColor:"#e3b3ab"}} onClick={onDelete}>🗑 Usuń</button>
@@ -1393,7 +1394,7 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
         </div>); })}
 
       {(modal==="new"||editingOffer) && <OfferFormModal offers={offers} onClose={()=>{setModal(null);setEditingOffer(null);}} initial={editingOffer?{...editingOffer,days:editingOffer.days??editingOffer.qty??1,qty:editingOffer.days??editingOffer.qty??1}:emptyForm(settings)} equipment={equipment} packages={packages} tiers={tiers} clients={clients} settings={settings} vouchers={vouchers} onSave={saveOffer}/>}
-      {modal && modal!=="new" && <OfferDetailModal offer={modal} onClose={()=>setModal(null)} equipment={equipment} packages={packages} tiers={tiers} clients={clients} settings={settings} vouchers={vouchers} onToggleZadatek={toggleZadatek} onEdit={()=>{setEditingOffer(modal);setModal(null);}} onDelete={()=>delOffer(modal)}/>}
+      {modal && modal!=="new" && <OfferDetailModal offer={modal} onClose={()=>setModal(null)} equipment={equipment} packages={packages} tiers={tiers} clients={clients} settings={settings} vouchers={vouchers} onToggleZadatek={toggleZadatek} onEdit={()=>{setEditingOffer(modal);setModal(null);}} onDelete={()=>delOffer(modal)} onExtend={()=>{ const o=modal; setModal(null); setExtendModal(o); }}/>}
       {voucherModal && <VoucherModal onClose={()=>setVoucherModal(false)} settings={settings} clients={clients} equipment={equipment} offers={offers} setOffers={setOffers} setErr={setErr} flash={flash} setVouchers={setVouchers}/>}
       {voucherEdit && <VoucherModal onClose={()=>setVoucherEdit(null)} initial={voucherEdit} settings={settings} clients={clients} equipment={equipment} offers={offers} setOffers={setOffers} setErr={setErr} flash={flash} setVouchers={setVouchers}/>}
       {voucherTerm && <VoucherTermModal voucher={voucherTerm} onClose={()=>setVoucherTerm(null)} equipment={equipment} clients={clients} settings={settings} setErr={setErr} flash={flash} setVouchers={setVouchers} setOffers={setOffers}/>}
@@ -1432,12 +1433,15 @@ function ExtendModal({offer, onClose, equipment, settings, packages, clients, vo
   const rateExtra = +eq.rate_extra_day || +eq.rate_day || 0;
   const suggestedExtraRental = extraDays * rateExtra;
 
-  // Edytowalne pola (użytkownik może nadpisać każdą pozycję)
-  const [extraRental, setExtraRental] = useState(suggestedExtraRental);
+  // Edytowalne pola: extraRental jest "sterowane" — puste = użyj podpowiedzi (przelicza się z datą),
+  // wpisana wartość = nadpisanie użytkownika (zostaje bez zmian przy zmianie daty)
+  const [extraRentalOverride, setExtraRentalOverride] = useState("");
   const [extraTransport, setExtraTransport] = useState(0);
   const [extraAddons, setExtraAddons] = useState(0);
   const [extraNote, setExtraNote] = useState("");
 
+  const isOverridden = extraRentalOverride !== "" && extraRentalOverride !== null;
+  const extraRental = isOverridden ? +extraRentalOverride : suggestedExtraRental;
   const totalExtra = (+extraRental||0) + (+extraTransport||0) + (+extraAddons||0);
 
   // Konflikt z inną rezerwacją?
@@ -1497,11 +1501,14 @@ function ExtendModal({offer, onClose, equipment, settings, packages, clients, vo
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,marginBottom:8}}>
             <span style={{fontSize:13}}>Wynajem (dodatkowe {extraDays} {dobaForm(extraDays)})</span>
             <div style={{display:"flex",alignItems:"center",gap:5}}>
-              <input type="number" value={extraRental} onChange={e=>setExtraRental(e.target.value)} style={{width:90,padding:"4px 8px",textAlign:"right",border:"1px solid var(--line)",borderRadius:6}}/>
+              <input type="number" value={isOverridden ? extraRentalOverride : suggestedExtraRental} onChange={e=>setExtraRentalOverride(e.target.value)} style={{width:90,padding:"4px 8px",textAlign:"right",border:isOverridden?"1px solid var(--gold)":"1px solid var(--line)",borderRadius:6,background:isOverridden?"#fff8e1":"#fff"}}/>
               <span style={{fontSize:12,color:"var(--muted)"}}>zł</span>
             </div>
           </div>
-          <div style={{fontSize:11,color:"var(--muted)",marginBottom:10,marginTop:-4}}>Podpowiedź: {extraDays} × {fmt(rateExtra)}/doba = {fmt(suggestedExtraRental)}</div>
+          <div style={{fontSize:11,color:"var(--muted)",marginBottom:10,marginTop:-4,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <span>{isOverridden ? "✏️ Kwota nadpisana ręcznie" : `Auto: ${extraDays} × ${fmt(rateExtra)}/doba = ${fmt(suggestedExtraRental)}`}</span>
+            {isOverridden && <span style={{color:"var(--green-d)",cursor:"pointer",fontWeight:600}} onClick={()=>setExtraRentalOverride("")}>↻ Przelicz auto</span>}
+          </div>
 
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,marginBottom:10}}>
             <span style={{fontSize:13}}>Dodatkowy transport</span>
