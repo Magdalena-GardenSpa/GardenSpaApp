@@ -1149,7 +1149,6 @@ function OfferDetailModal({offer,onClose,equipment,packages,tiers,clients,settin
           {addonsAndCustom>0 && <div className="calc-line"><span>Dodatki</span><span>{fmt(addonsAndCustom)}</span></div>}
           {extSum>0 && <div className="calc-line" style={{color:"#9a6b00",fontWeight:600}}><span>+ Przedłużenie</span><span>{fmt(extSum)}</span></div>}
           <div className="calc-total"><span>Razem do zapłaty za usługę</span><span>{fmt(serviceTotal)}</span></div>
-          {calc.zadatek>0 && <div className="calc-line" style={{fontSize:11.5,color:"var(--muted)",marginTop:-4}}><span>&nbsp;&nbsp;w tym zadatek {zadatekAlreadyPaid?"✅ wpłacony":"do wpłaty przy rezerwacji"}</span><span>{fmt(zadShown)}</span></div>}
           <div className="calc-line" style={{color:"#9a6b00",fontWeight:700,marginTop:6}}><span>+ Kaucja zwrotna (w dniu wynajmu)</span><span>{fmt(calc.deposit)}</span></div>
           <div className="calc-total"><span>RAZEM Z KAUCJĄ</span><span>{fmt(calc.total)}</span></div>
         </div>
@@ -1164,7 +1163,7 @@ function OfferDetailModal({offer,onClose,equipment,packages,tiers,clients,settin
             <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:3}}><span>+ Kaucja zwrotna</span><span>{fmt(calc.deposit)}</span></div>
             {zadatekAlreadyPaid && zadShown>0 && <div style={{display:"flex",justifyContent:"space-between",fontSize:13,color:"var(--green-d)",marginBottom:3}}><span>− Zadatek już wpłacony</span><span>−{fmt(zadShown)}</span></div>}
             <div style={{display:"flex",justifyContent:"space-between",fontSize:15,fontWeight:700,color:"var(--green-d)",paddingTop:8,marginTop:4,borderTop:"1px solid #cfe0d1"}}><span>➡ DO POBRANIA</span><span>{fmt(collectedAtRental)}</span></div>
-            <div style={{fontSize:12,color:"var(--muted)",marginTop:10,paddingTop:8,borderTop:"1px dashed #cfe0d1"}}>Przy zwrocie sprzętu: <b style={{color:"var(--green-d)"}}>oddajesz klientowi {fmt(calc.deposit)}</b> (kaucja zwrotna).</div>
+            <div style={{fontSize:12,color:"var(--muted)",marginTop:10,paddingTop:8,borderTop:"1px dashed #cfe0d1"}}>Kaucja <b style={{color:"var(--green-d)"}}>{fmt(calc.deposit)}</b> pozostaje do rozliczenia przy zwrocie sprzętu (pomniejszona o ewentualne uszkodzenia lub dopłaty).</div>
           </>}
 
           {/* SCENARIUSZ 2: Z PRZEDŁUŻENIEM */}
@@ -1183,7 +1182,7 @@ function OfferDetailModal({offer,onClose,equipment,packages,tiers,clients,settin
                   <div style={{display:"flex",justifyContent:"space-between",fontSize:12.5,marginBottom:2}}><span>Kaucja u Ciebie</span><span>{fmt(calc.deposit)}</span></div>
                   <div style={{display:"flex",justifyContent:"space-between",fontSize:12.5,marginBottom:2}}><span>− Dopłata za przedłużenie</span><span>−{fmt(extSum)}</span></div>
                   <div style={{display:"flex",justifyContent:"space-between",fontSize:14,fontWeight:700,color:"var(--green-d)",paddingTop:6,marginTop:3,borderTop:"1px solid #e5c88a"}}><span>➡ DO ZWROTU KLIENTOWI</span><span>{fmt(depositAfterExtension)}</span></div>
-                  <div style={{fontSize:11,color:"#7a5500",marginTop:8,lineHeight:1.4}}>💡 Alternatywnie: klient dopłaca {fmt(extSum)} osobno (BLIK/gotówka), a Ty oddajesz pełne {fmt(calc.deposit)} kaucji.</div>
+                  <div style={{fontSize:11,color:"#7a5500",marginTop:8,lineHeight:1.4}}>💡 Alternatywnie: klient dopłaca {fmt(extSum)} osobno (gotówką przy zwrocie), a Ty oddajesz pełne {fmt(calc.deposit)} kaucji.</div>
                 </>
               ) : (
                 <>
