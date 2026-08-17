@@ -1131,7 +1131,16 @@ function OfferDetailModal({offer,onClose,equipment,packages,tiers,clients,settin
           const normalSum = normalItems.reduce((s,c)=>s+(+c.price||0), 0);
           const addonsAndCustom = calc.addonsSum + normalSum;
           const serviceTotal = calc.total - calc.deposit; // wynajem + transport + dodatki + przedłużenia (bez kaucji)
+          const zadShown = calc.zadatek > 0 ? Math.min(calc.zadatek, serviceTotal - extSum) : 0;
+          const zadatekAlreadyPaid = offer.zadatek_paid || offer.status==="accepted" || offer.status==="done";
+          // Wyliczenia rozliczeniowe
+          const serviceBeforeExt = serviceTotal - extSum; // to co było przed przedłużeniem
+          const collectedAtRental = serviceBeforeExt + calc.deposit - (zadatekAlreadyPaid ? zadShown : 0);
+          const hasExtension = extSum > 0;
+          const depositAfterExtension = Math.max(0, calc.deposit - extSum);
+          const stillOwedByClient = Math.max(0, extSum - calc.deposit); // gdyby przedłużenie > kaucji
           return (
+        <>
         <div className="calc-box">
           <div className="calc-line"><span>Wynajem</span><span>{fmt(calc.rental)}</span></div>
           {calc.discountAmt>0 && <div className="calc-line" style={{color:"#9a6b00"}}><span>Rabat polecenia</span><span>-{fmt(calc.discountAmt)}{calc.discountType==='percent'?` (${calc.discountPct}%)`:''}</span></div>}
@@ -1140,10 +1149,56 @@ function OfferDetailModal({offer,onClose,equipment,packages,tiers,clients,settin
           {addonsAndCustom>0 && <div className="calc-line"><span>Dodatki</span><span>{fmt(addonsAndCustom)}</span></div>}
           {extSum>0 && <div className="calc-line" style={{color:"#9a6b00",fontWeight:600}}><span>+ Przedłużenie</span><span>{fmt(extSum)}</span></div>}
           <div className="calc-total"><span>Razem do zapłaty za usługę</span><span>{fmt(serviceTotal)}</span></div>
-          {calc.zadatek>0 && <div className="calc-line" style={{fontSize:11.5,color:"var(--muted)",marginTop:-4}}><span>&nbsp;&nbsp;w tym zadatek {(offer.zadatek_paid || offer.status==="accepted" || offer.status==="done")?"✅ wpłacony":"do wpłaty przy rezerwacji"}</span><span>{fmt(Math.min(calc.zadatek, serviceTotal))}</span></div>}
+          {calc.zadatek>0 && <div className="calc-line" style={{fontSize:11.5,color:"var(--muted)",marginTop:-4}}><span>&nbsp;&nbsp;w tym zadatek {zadatekAlreadyPaid?"✅ wpłacony":"do wpłaty przy rezerwacji"}</span><span>{fmt(zadShown)}</span></div>}
           <div className="calc-line" style={{color:"#9a6b00",fontWeight:700,marginTop:6}}><span>+ Kaucja zwrotna (w dniu wynajmu)</span><span>{fmt(calc.deposit)}</span></div>
           <div className="calc-total"><span>RAZEM Z KAUCJĄ</span><span>{fmt(calc.total)}</span></div>
         </div>
+
+        <div className="card" style={{marginTop:14,padding:14,background:"#f0f7f1",border:"1px solid var(--green)"}}>
+          <div style={{fontSize:12,fontWeight:700,color:"var(--green-d)",textTransform:"uppercase",letterSpacing:.4,marginBottom:10}}>💰 Rozliczenie</div>
+
+          {/* SCENARIUSZ 1: BEZ PRZEDŁUŻENIA */}
+          {!hasExtension && <>
+            <div style={{fontSize:12.5,color:"var(--muted)",marginBottom:6,fontWeight:600}}>W DNIU WYNAJMU — pobierasz od klienta:</div>
+            <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:3}}><span>Wynajem + transport + dodatki</span><span>{fmt(serviceTotal)}</span></div>
+            <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:3}}><span>+ Kaucja zwrotna</span><span>{fmt(calc.deposit)}</span></div>
+            {zadatekAlreadyPaid && zadShown>0 && <div style={{display:"flex",justifyContent:"space-between",fontSize:13,color:"var(--green-d)",marginBottom:3}}><span>− Zadatek już wpłacony</span><span>−{fmt(zadShown)}</span></div>}
+            <div style={{display:"flex",justifyContent:"space-between",fontSize:15,fontWeight:700,color:"var(--green-d)",paddingTop:8,marginTop:4,borderTop:"1px solid #cfe0d1"}}><span>➡ DO POBRANIA</span><span>{fmt(collectedAtRental)}</span></div>
+            <div style={{fontSize:12,color:"var(--muted)",marginTop:10,paddingTop:8,borderTop:"1px dashed #cfe0d1"}}>Przy zwrocie sprzętu: <b style={{color:"var(--green-d)"}}>oddajesz klientowi {fmt(calc.deposit)}</b> (kaucja zwrotna).</div>
+          </>}
+
+          {/* SCENARIUSZ 2: Z PRZEDŁUŻENIEM */}
+          {hasExtension && <>
+            <div style={{fontSize:12.5,color:"var(--muted)",marginBottom:6,fontWeight:600}}>W DNIU WYNAJMU — już pobrane ✅</div>
+            <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:3}}><span>Wynajem + transport + dodatki</span><span>{fmt(serviceBeforeExt)}</span></div>
+            <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:3}}><span>+ Kaucja</span><span>{fmt(calc.deposit)}</span></div>
+            {zadatekAlreadyPaid && zadShown>0 && <div style={{display:"flex",justifyContent:"space-between",fontSize:13,color:"var(--green-d)",marginBottom:3}}><span>− Zadatek wpłacony wcześniej</span><span>−{fmt(zadShown)}</span></div>}
+            <div style={{display:"flex",justifyContent:"space-between",fontSize:13.5,fontWeight:700,paddingTop:6,marginTop:3,borderTop:"1px solid #cfe0d1"}}><span>Razem pobrane</span><span>{fmt(serviceBeforeExt + calc.deposit - (zadatekAlreadyPaid?zadShown:0))}</span></div>
+
+            <div style={{marginTop:14,padding:12,background:"#fdf0d9",borderRadius:8,border:"1px solid #e5c88a"}}>
+              <div style={{fontSize:12.5,fontWeight:700,color:"#9a6b00",marginBottom:6}}>⚠️ PRZEDŁUŻENIE — dopłata: {fmt(extSum)}</div>
+              {extSum <= calc.deposit ? (
+                <>
+                  <div style={{fontSize:12.5,color:"#5c4200",marginBottom:8}}>Propozycja: <b>potrąć z kaucji przy zwrocie</b>.</div>
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:12.5,marginBottom:2}}><span>Kaucja u Ciebie</span><span>{fmt(calc.deposit)}</span></div>
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:12.5,marginBottom:2}}><span>− Dopłata za przedłużenie</span><span>−{fmt(extSum)}</span></div>
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:14,fontWeight:700,color:"var(--green-d)",paddingTop:6,marginTop:3,borderTop:"1px solid #e5c88a"}}><span>➡ DO ZWROTU KLIENTOWI</span><span>{fmt(depositAfterExtension)}</span></div>
+                  <div style={{fontSize:11,color:"#7a5500",marginTop:8,lineHeight:1.4}}>💡 Alternatywnie: klient dopłaca {fmt(extSum)} osobno (BLIK/gotówka), a Ty oddajesz pełne {fmt(calc.deposit)} kaucji.</div>
+                </>
+              ) : (
+                <>
+                  <div style={{fontSize:12.5,color:"#b3261e",marginBottom:8,fontWeight:600}}>⚠️ Dopłata ({fmt(extSum)}) jest większa niż kaucja ({fmt(calc.deposit)}).</div>
+                  <div style={{fontSize:12.5,color:"#5c4200",marginBottom:6}}>Klient MUSI dopłacić różnicę osobno:</div>
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:2}}><span>Dopłata za przedłużenie</span><span>{fmt(extSum)}</span></div>
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:2}}><span>− Kaucja do potrącenia</span><span>−{fmt(calc.deposit)}</span></div>
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:14,fontWeight:700,color:"#b3261e",paddingTop:6,marginTop:3,borderTop:"1px solid #e5c88a"}}><span>➡ DO POBRANIA DODATKOWO</span><span>{fmt(stillOwedByClient)}</span></div>
+                  <div style={{fontSize:11,color:"#7a5500",marginTop:8,lineHeight:1.4}}>Cała kaucja idzie na przedłużenie → przy zwrocie <b>nie oddajesz kaucji</b>.</div>
+                </>
+              )}
+            </div>
+          </>}
+        </div>
+        </>
           );
         })()}
         {offer.status!=="accepted" && offer.status!=="done" && <div className="card" style={{marginTop:12,cursor:"pointer",background:offer.zadatek_paid?"var(--green-l)":"#f6f4ee"}} onClick={()=>onToggleZadatek(offer)}>
