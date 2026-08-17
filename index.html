@@ -1449,29 +1449,51 @@ function ExtendModal({offer, onClose, equipment, settings, packages, clients, vo
     && (x.equipment_id === o.equipment_id || (x.extra_equip_ids||[]).includes(o.equipment_id))
     && (() => { const xs = new Date(x.year, x.month, x.day); const xe = new Date(x.year, x.month, x.day + (+x.days || +x.qty || 1)); return xs < newEnd && xe > oldStart; })());
 
+  const [saving, setSaving] = useState(false);
   const save = async () => {
-    if(extraDays<=0){ setErr("Nowa data musi być późniejsza niż obecna data zwrotu."); return; }
+    if(saving) return;
+    console.log("[ExtendModal] Kliknięto Zapisz. Dane:", {newEndStr, newDays, oldDays, extraDays, suggestedMode, totalExtra, extraRental, extraTransport, extraAddons});
+
+    // Walidacje z widocznym feedbackiem
+    if(!newEndStr || !/^\d{4}-\d{2}-\d{2}$/.test(newEndStr)){
+      alert("⚠ Wpisz poprawną nową datę zwrotu (w formacie: RRRR-MM-DD).");
+      return;
+    }
+    if(isNaN(newDays) || isNaN(extraDays) || extraDays<=0){
+      alert(`⚠ Nowa data (${newEndStr}) musi być późniejsza niż obecna data zwrotu.`);
+      return;
+    }
     if(conflict){
       const cn = clients.find(c=>c.phone===conflict.phone);
       if(!confirm(`⚠️ UWAGA: ten sprzęt jest już zarezerwowany przez ${cn?.name||conflict.phone} w okresie kolidującym z nową datą. Kontynuować mimo to?`)) return;
     }
+
+    setSaving(true);
     try{
-      // Zapisujemy: nową liczbę dób + tryb + dopłatę (jako custom_item, żeby było widoczne w rozliczeniu)
       const noteLabel = extraNote ? `Przedłużenie (${extraDays} ${dobaForm(extraDays)}): ${extraNote}` : `Przedłużenie o ${extraDays} ${dobaForm(extraDays)} (do ${newEndStr})`;
-      const newCustomItems = [...(o.custom_items||[])];
+      const existingItems = Array.isArray(o.custom_items) ? o.custom_items : [];
+      const newCustomItems = [...existingItems];
       if(totalExtra > 0){
-        newCustomItems.push({label: noteLabel, price: totalExtra});
+        newCustomItems.push({label: noteLabel, price: +totalExtra});
       }
       const patch = {
-        days: newDays,
-        qty: newDays,
+        days: +newDays,
+        qty: +newDays,
         mode: suggestedMode,
         custom_items: newCustomItems
       };
-      await sbUpdate("gs_offers","id",o.id,patch);
-      onSaved(patch);
-      flash(`✓ Przedłużono do ${newEndStr}. Dopłata: ${fmt(totalExtra)}`);
-    }catch(ex){ setErr(String(ex.message||ex)); }
+      console.log("[ExtendModal] Wysyłam patch do Supabase:", patch);
+      const result = await sbUpdate("gs_offers","id",o.id,patch);
+      console.log("[ExtendModal] Odpowiedź Supabase:", result);
+      if(flash) flash(`✓ Przedłużono do ${newEndStr}. Dopłata: ${fmt(totalExtra)}`);
+      if(onSaved) onSaved(patch);
+    }catch(ex){
+      const msg = String(ex.message||ex);
+      console.error("[ExtendModal] Błąd zapisu:", ex);
+      if(setErr) setErr(msg);
+      alert("❌ Nie udało się zapisać przedłużenia.\n\nSzczegóły: " + msg);
+      setSaving(false);
+    }
   };
 
   return (
@@ -1551,8 +1573,8 @@ function ExtendModal({offer, onClose, equipment, settings, packages, clients, vo
         </div>
 
         <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
-          <button className="btn ghost" onClick={onClose}>Anuluj</button>
-          <button className="btn primary" onClick={save} disabled={extraDays<=0}>Zapisz przedłużenie</button>
+          <button type="button" className="btn ghost" onClick={onClose} disabled={saving}>Anuluj</button>
+          <button type="button" className="btn primary" onClick={save} disabled={saving||extraDays<=0}>{saving ? "Zapisywanie…" : "Zapisz przedłużenie"}</button>
         </div>
       </div>
     </div>
