@@ -1279,50 +1279,8 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
     try{ await sbUpdate("gs_offers","id",o.id,{status:ns}); setOffers(p=>p.map(x=>x.id===o.id?{...x,status:ns}:x)); flash("Status: "+ns); }
     catch(ex){ setErr(String(ex.message||ex)); }
   };
-  const extendRental = async (o) => {
-    // Aktualna data zwrotu
-    const oldEnd = new Date(o.year, o.month, o.day + (+o.days || +o.qty || 1));
-    const oldEndStr = `${oldEnd.getFullYear()}-${String(oldEnd.getMonth()+1).padStart(2,'0')}-${String(oldEnd.getDate()).padStart(2,'0')}`;
-    // Domyślnie proponujemy +1 dzień
-    const suggestEnd = new Date(oldEnd.getTime() + 86400000);
-    const suggestStr = `${suggestEnd.getFullYear()}-${String(suggestEnd.getMonth()+1).padStart(2,'0')}-${String(suggestEnd.getDate()).padStart(2,'0')}`;
-    const newEndStr = prompt(`Przedłużenie wynajmu ${equipment.find(e=>e.id===o.equipment_id)?.name||''}\n\nObecna data zwrotu: ${oldEndStr}\nDo jakiej daty przedłużyć? (RRRR-MM-DD)`, suggestStr);
-    if(!newEndStr) return;
-    const [y,m,d] = newEndStr.split('-').map(Number);
-    if(!y || !m || !d){ setErr("Zła data — użyj formatu RRRR-MM-DD (np. 2026-08-25)"); return; }
-    const newEnd = new Date(y, m-1, d);
-    const start = new Date(o.year, o.month, o.day);
-    const newDays = Math.max(1, Math.round((newEnd - start)/86400000));
-    if(newDays <= (+o.days || +o.qty || 1)){ setErr(`Nowa data (${newEndStr}) nie przedłuża wynajmu — musi być późniejsza niż ${oldEndStr}`); return; }
-    // Auto-detekcja trybu weekend/day dla nowego zakresu
-    const startDay = start.getDay(); // 0=nd, 5=pt, 6=sb
-    const endDay = newEnd.getDay();
-    let newMode = o.mode;
-    if(newMode !== 'hour' && newMode !== 'week'){
-      // Jeśli mieści się w pt→nd/pn (2-3 doby) — weekend, inaczej day
-      newMode = (startDay === 5 && (endDay === 6 || endDay === 0 || endDay === 1) && newDays >= 2 && newDays <= 3) ? 'weekend' : 'day';
-    }
-    // Sprawdź konflikt z inną rezerwacją
-    const conflict = offers.find(x => x.id !== o.id && x.status !== 'draft' && x.status !== 'done'
-      && (x.equipment_id === o.equipment_id || (x.extra_equip_ids||[]).includes(o.equipment_id))
-      && (() => { const xs = new Date(x.year, x.month, x.day); const xe = new Date(x.year, x.month, x.day + (+x.days || +x.qty || 1)); return xs < newEnd && xe > start; })());
-    if(conflict){
-      const cn = clients.find(c=>c.phone===conflict.phone);
-      if(!confirm(`⚠️ UWAGA: ten sprzęt jest już zarezerwowany przez ${cn?.name||conflict.phone} w okresie kolidującym z nową datą. Kontynuować mimo to?`)) return;
-    }
-    // Przelicz nową kwotę
-    const newO = {...o, days: newDays, qty: newDays, mode: newMode};
-    const oldCalc = computeCalc(o, equipment, settings, packages, clients, vouchers);
-    const newCalc = computeCalc(newO, equipment, settings, packages, clients, vouchers);
-    const diff = newCalc.total - oldCalc.total;
-    if(!confirm(`Podsumowanie przedłużenia:\n\nStara kwota: ${fmt(oldCalc.total)}\nNowa kwota: ${fmt(newCalc.total)}\nDopłata: ${fmt(diff)}\n\nZapisać zmiany?`)) return;
-    try{
-      const patch = { days: newDays, qty: newDays, mode: newMode };
-      await sbUpdate("gs_offers","id",o.id,patch);
-      setOffers(p=>p.map(x=>x.id===o.id?{...x,...patch}:x));
-      flash(`✓ Przedłużono do ${newEndStr}. Dopłata: ${fmt(diff)}`);
-    }catch(ex){ setErr(String(ex.message||ex)); }
-  };
+  const [extendModal, setExtendModal] = useState(null); // rezerwacja do przedłużenia
+  const extendRental = (o) => setExtendModal(o);
   const markSent = async (o) => {
     try{ await sbUpdate("gs_offers","id",o.id,{status:"sent"}); setOffers(p=>p.map(x=>x.id===o.id?{...x,status:"sent"}:x)); }
     catch(ex){ setErr(String(ex.message||ex)); }
@@ -1426,7 +1384,8 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
             <span className="chip" onClick={()=>openShare(o,"sms")}>💬 SMS</span>
             <span className="chip" onClick={()=>openShare(o,"msg")}>📩 Messenger</span>
             {isInProgress(o) && <span className="chip on" style={{background:"#fdf0d9",color:"#9a6b00"}} onClick={()=>extendRental(o)}>➕ Przedłuż</span>}
-            {st[2] && !expired && <span className="chip on" onClick={()=>{ if(o.status==="draft") markSent(o); else if(o.status==="accepted" && !hasEnded(o)){ if(confirm("Ten wynajem jeszcze się nie zakończył ("+dateRangeLabel(o)+"). Na pewno oznaczyć jako zrealizowany i przenieść do archiwum?")) advance(o); } else advance(o); }}>▸ {st[2]}</span>}
+            {st[2] && !expired && o.status!=="accepted" && <span className="chip on" onClick={()=>{ if(o.status==="draft") markSent(o); else advance(o); }}>▸ {st[2]}</span>}
+            {o.status==="accepted" && !expired && !isInProgress(o) && hasEnded(o) && <span className="chip on" style={{background:"#eee",color:"#555",border:"1px dashed #999"}} onClick={()=>{ if(confirm(`Przenieść ofertę do archiwum jako zrealizowaną?\n\nKlient: ${(clients.find(c=>c.phone===o.phone)?.name)||o.name||o.phone}\nSprzęt: ${eq?eq.name:'—'}\nTermin: ${dateRangeLabel(o)}\n\nUwaga: po zarchiwizowaniu oferta zniknie z listy aktywnych.`)) advance(o); }}>📦 Archiwizuj</span>}
             {o.status==="done" && <span className="chip" onClick={()=>restoreOffer(o)}>↩ Przywróć do aktywnych</span>}
             {expired && <span className="chip on" onClick={()=>refreshExpiry(o)} title="Klient się odezwał po terminie — przedłuż ważność oferty i wróć do aktywnych">↩ Przywróć jako aktywną</span>}
           </div>
@@ -1438,6 +1397,152 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
       {voucherModal && <VoucherModal onClose={()=>setVoucherModal(false)} settings={settings} clients={clients} equipment={equipment} offers={offers} setOffers={setOffers} setErr={setErr} flash={flash} setVouchers={setVouchers}/>}
       {voucherEdit && <VoucherModal onClose={()=>setVoucherEdit(null)} initial={voucherEdit} settings={settings} clients={clients} equipment={equipment} offers={offers} setOffers={setOffers} setErr={setErr} flash={flash} setVouchers={setVouchers}/>}
       {voucherTerm && <VoucherTermModal voucher={voucherTerm} onClose={()=>setVoucherTerm(null)} equipment={equipment} clients={clients} settings={settings} setErr={setErr} flash={flash} setVouchers={setVouchers} setOffers={setOffers}/>}
+      {extendModal && <ExtendModal offer={extendModal} onClose={()=>setExtendModal(null)} equipment={equipment} settings={settings} packages={packages} clients={clients} vouchers={vouchers} offers={offers} flash={flash} setErr={setErr} onSaved={(patch)=>{ setOffers(p=>p.map(x=>x.id===extendModal.id?{...x,...patch}:x)); setExtendModal(null); }}/>}
+    </div>
+  );
+}
+
+function ExtendModal({offer, onClose, equipment, settings, packages, clients, vouchers, offers, flash, setErr, onSaved}){
+  const o = offer;
+  const eq = equipment.find(e=>e.id===o.equipment_id) || {};
+  const cli = clients.find(c=>c.phone===o.phone);
+  const oldStart = new Date(o.year, o.month, o.day);
+  const oldEnd = new Date(o.year, o.month, o.day + (+o.days || +o.qty || 1));
+  const oldEndStr = `${oldEnd.getFullYear()}-${String(oldEnd.getMonth()+1).padStart(2,'0')}-${String(oldEnd.getDate()).padStart(2,'0')}`;
+  const suggestEnd = new Date(oldEnd.getTime() + 86400000);
+  const suggestStr = `${suggestEnd.getFullYear()}-${String(suggestEnd.getMonth()+1).padStart(2,'0')}-${String(suggestEnd.getDate()).padStart(2,'0')}`;
+
+  const [newEndStr, setNewEndStr] = useState(suggestStr);
+  // Wyliczenia bazowe (przed edycją)
+  const [y,m,d] = newEndStr.split('-').map(Number);
+  const newEnd = (y&&m&&d) ? new Date(y, m-1, d) : oldEnd;
+  const newDays = Math.max(1, Math.round((newEnd - oldStart)/86400000));
+  const oldDays = +o.days || +o.qty || 1;
+  const extraDays = Math.max(0, newDays - oldDays);
+  // Auto-detekcja trybu dla nowego zakresu (do podpowiedzi)
+  const sd = oldStart.getDay(), ed = newEnd.getDay();
+  const isWknd = sd===5 && (ed===6||ed===0||ed===1) && newDays>=2 && newDays<=3;
+  const suggestedMode = (o.mode==='hour'||o.mode==='week') ? o.mode : (isWknd ? 'weekend' : 'day');
+
+  // Wyliczenia auto: stara kwota, nowa kwota
+  const oldCalc = computeCalc(o, equipment, settings, packages, clients, vouchers);
+  const newCalcAuto = computeCalc({...o, days:newDays, qty:newDays, mode:suggestedMode}, equipment, settings, packages, clients, vouchers);
+
+  // Podpowiedziana dopłata za dodatkowe dni (proste liczenie: extra_day_rate × liczba dodatkowych dób)
+  const rateExtra = +eq.rate_extra_day || +eq.rate_day || 0;
+  const suggestedExtraRental = extraDays * rateExtra;
+
+  // Edytowalne pola (użytkownik może nadpisać każdą pozycję)
+  const [extraRental, setExtraRental] = useState(suggestedExtraRental);
+  const [extraTransport, setExtraTransport] = useState(0);
+  const [extraAddons, setExtraAddons] = useState(0);
+  const [extraNote, setExtraNote] = useState("");
+
+  const totalExtra = (+extraRental||0) + (+extraTransport||0) + (+extraAddons||0);
+
+  // Konflikt z inną rezerwacją?
+  const conflict = offers.find(x => x.id !== o.id && x.status !== 'draft' && x.status !== 'done'
+    && (x.equipment_id === o.equipment_id || (x.extra_equip_ids||[]).includes(o.equipment_id))
+    && (() => { const xs = new Date(x.year, x.month, x.day); const xe = new Date(x.year, x.month, x.day + (+x.days || +x.qty || 1)); return xs < newEnd && xe > oldStart; })());
+
+  const save = async () => {
+    if(extraDays<=0){ setErr("Nowa data musi być późniejsza niż obecna data zwrotu."); return; }
+    if(conflict){
+      const cn = clients.find(c=>c.phone===conflict.phone);
+      if(!confirm(`⚠️ UWAGA: ten sprzęt jest już zarezerwowany przez ${cn?.name||conflict.phone} w okresie kolidującym z nową datą. Kontynuować mimo to?`)) return;
+    }
+    try{
+      // Zapisujemy: nową liczbę dób + tryb + dopłatę (jako custom_item, żeby było widoczne w rozliczeniu)
+      const noteLabel = extraNote ? `Przedłużenie (${extraDays} ${dobaForm(extraDays)}): ${extraNote}` : `Przedłużenie o ${extraDays} ${dobaForm(extraDays)} (do ${newEndStr})`;
+      const newCustomItems = [...(o.custom_items||[])];
+      if(totalExtra > 0){
+        newCustomItems.push({label: noteLabel, price: totalExtra});
+      }
+      const patch = {
+        days: newDays,
+        qty: newDays,
+        mode: suggestedMode,
+        custom_items: newCustomItems
+      };
+      await sbUpdate("gs_offers","id",o.id,patch);
+      onSaved(patch);
+      flash(`✓ Przedłużono do ${newEndStr}. Dopłata: ${fmt(totalExtra)}`);
+    }catch(ex){ setErr(String(ex.message||ex)); }
+  };
+
+  return (
+    <div className="overlay" onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
+      <div className="modal">
+        <button className="close-x" onClick={onClose}>×</button>
+        <h2>➕ Przedłużenie wynajmu</h2>
+        <div className="muted" style={{fontSize:13,marginBottom:14}}>
+          <b>{eq.name||'—'}</b> · {cli?.name||o.name||o.phone}<br/>
+          Obecny termin: {oldStart.getDate()}.{oldStart.getMonth()+1}.{oldStart.getFullYear()} → <b>{oldEnd.getDate()}.{oldEnd.getMonth()+1}.{oldEnd.getFullYear()}</b> ({oldDays} {dobaForm(oldDays)})
+        </div>
+
+        <div className="field">
+          <label>Nowa data zwrotu</label>
+          <input type="date" value={newEndStr} onChange={e=>setNewEndStr(e.target.value)}/>
+          {extraDays>0 && <div style={{fontSize:12,color:"var(--green-d)",marginTop:4}}>✓ Przedłużenie o <b>{extraDays} {dobaForm(extraDays)}</b> · nowy łączny okres: <b>{newDays} {dobaForm(newDays)}</b></div>}
+          {extraDays<=0 && <div style={{fontSize:12,color:"#b3261e",marginTop:4}}>⚠ Nowa data musi być późniejsza niż {oldEnd.getDate()}.{oldEnd.getMonth()+1}.{oldEnd.getFullYear()}</div>}
+        </div>
+
+        {conflict && <div className="banner err" style={{fontSize:12.5,marginBottom:10}}>
+          ⚠️ Ten sprzęt jest już zarezerwowany przez <b>{clients.find(c=>c.phone===conflict.phone)?.name||conflict.phone}</b> w okresie kolidującym z nową datą — mimo to można kontynuować, ale sprawdź kalendarz.
+        </div>}
+
+        <div className="card" style={{background:"#f7f5ee",marginBottom:14,padding:14}}>
+          <div style={{fontSize:12,fontWeight:700,color:"var(--muted)",textTransform:"uppercase",letterSpacing:.4,marginBottom:10}}>💰 Dopłata za przedłużenie (każdą pozycję możesz zmienić)</div>
+
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,marginBottom:8}}>
+            <span style={{fontSize:13}}>Wynajem (dodatkowe {extraDays} {dobaForm(extraDays)})</span>
+            <div style={{display:"flex",alignItems:"center",gap:5}}>
+              <input type="number" value={extraRental} onChange={e=>setExtraRental(e.target.value)} style={{width:90,padding:"4px 8px",textAlign:"right",border:"1px solid var(--line)",borderRadius:6}}/>
+              <span style={{fontSize:12,color:"var(--muted)"}}>zł</span>
+            </div>
+          </div>
+          <div style={{fontSize:11,color:"var(--muted)",marginBottom:10,marginTop:-4}}>Podpowiedź: {extraDays} × {fmt(rateExtra)}/doba = {fmt(suggestedExtraRental)}</div>
+
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,marginBottom:10}}>
+            <span style={{fontSize:13}}>Dodatkowy transport</span>
+            <div style={{display:"flex",alignItems:"center",gap:5}}>
+              <input type="number" value={extraTransport} onChange={e=>setExtraTransport(e.target.value)} style={{width:90,padding:"4px 8px",textAlign:"right",border:"1px solid var(--line)",borderRadius:6}} placeholder="0"/>
+              <span style={{fontSize:12,color:"var(--muted)"}}>zł</span>
+            </div>
+          </div>
+
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,marginBottom:10}}>
+            <span style={{fontSize:13}}>Dodatki (np. drewno, prąd)</span>
+            <div style={{display:"flex",alignItems:"center",gap:5}}>
+              <input type="number" value={extraAddons} onChange={e=>setExtraAddons(e.target.value)} style={{width:90,padding:"4px 8px",textAlign:"right",border:"1px solid var(--line)",borderRadius:6}} placeholder="0"/>
+              <span style={{fontSize:12,color:"var(--muted)"}}>zł</span>
+            </div>
+          </div>
+
+          <div className="field" style={{marginTop:4}}>
+            <label style={{fontSize:12}}>Notatka do rozliczenia (opcjonalnie)</label>
+            <input value={extraNote} onChange={e=>setExtraNote(e.target.value)} placeholder="np. dodatkowy worek drewna, opóźniony odbiór" style={{fontSize:13}}/>
+          </div>
+
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",paddingTop:10,borderTop:"1px solid var(--line)",marginTop:6}}>
+            <span style={{fontSize:14,fontWeight:700,color:"var(--green-d)"}}>Dopłata razem</span>
+            <span style={{fontSize:16,fontWeight:700,color:"var(--green-d)"}}>{fmt(totalExtra)}</span>
+          </div>
+        </div>
+
+        <div className="card" style={{background:"#fff",marginBottom:14,padding:14,border:"1px solid var(--line)"}}>
+          <div style={{fontSize:12,fontWeight:700,color:"var(--muted)",textTransform:"uppercase",letterSpacing:.4,marginBottom:8}}>📊 Podsumowanie całości</div>
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:4}}><span>Pierwotna kwota (bez kaucji)</span><span>{fmt(oldCalc.total - oldCalc.deposit)}</span></div>
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:4}}><span>+ Dopłata za przedłużenie</span><span>{fmt(totalExtra)}</span></div>
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:6}}><span>+ Kaucja zwrotna (bez zmian)</span><span>{fmt(oldCalc.deposit)}</span></div>
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:15,fontWeight:700,color:"var(--green-d)",paddingTop:8,borderTop:"1px solid var(--line)"}}><span>Nowa kwota razem</span><span>{fmt(oldCalc.total + totalExtra)}</span></div>
+        </div>
+
+        <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+          <button className="btn ghost" onClick={onClose}>Anuluj</button>
+          <button className="btn primary" onClick={save} disabled={extraDays<=0}>Zapisz przedłużenie</button>
+        </div>
+      </div>
     </div>
   );
 }
