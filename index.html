@@ -1074,11 +1074,10 @@ function OfferFormModal({onClose, initial, equipment, packages, tiers, clients, 
           <div className="calc-line"><span>Dodatki</span><span>{fmt(calc.addonsSum)}</span></div>
           {calc.voucherAmt>0 && <div className="calc-line" style={{color:"#9a6b00"}}><span>Voucher podarunkowy</span><span>-{fmt(calc.voucherAmt)}</span></div>}
           {calc.customSum!==0 && <div className="calc-line"><span>Uzgodnienia własne</span><span>{fmt(calc.customSum)}</span></div>}
-          <div className="calc-line"><span>Zadatek (przy rezerwacji)</span><span>{fmt(calc.zadatek)}</span></div>
-          <div className="calc-line"><span>Kaucja (zwrotna, w dniu wynajmu)</span><span>{fmt(calc.deposit)}</span></div>
-          <div className="calc-total"><span>Wynajem (płatne teraz)</span><span>{fmt(calc.total-calc.deposit)}</span></div>
-          <div className="calc-line" style={{color:"#9a6b00",fontWeight:700}}><span>+ Kaucja (w dniu wynajmu)</span><span>{fmt(calc.deposit)}</span></div>
-          <div className="calc-total"><span>RAZEM</span><span>{fmt(calc.total)}</span></div>
+          <div className="calc-total"><span>Razem do zapłaty za usługę</span><span>{fmt(calc.total-calc.deposit)}</span></div>
+          {calc.zadatek>0 && <div className="calc-line" style={{fontSize:11.5,color:"var(--muted)",marginTop:-4}}><span>&nbsp;&nbsp;w tym zadatek przy rezerwacji</span><span>{fmt(Math.min(calc.zadatek, calc.total-calc.deposit))}</span></div>}
+          <div className="calc-line" style={{color:"#9a6b00",fontWeight:700,marginTop:6}}><span>+ Kaucja zwrotna (w dniu wynajmu)</span><span>{fmt(calc.deposit)}</span></div>
+          <div className="calc-total"><span>RAZEM Z KAUCJĄ</span><span>{fmt(calc.total)}</span></div>
         </div>
         <label style={{marginTop:12}}>Podgląd SMS</label>
         <div className="card" style={{fontSize:12.5,whiteSpace:"pre-wrap",background:"#faf9f5"}}>{offerMsg(f,f.name,settings,equipment,packages,tiers,clients,vouchers)}</div>
@@ -1123,20 +1122,33 @@ function OfferDetailModal({offer,onClose,equipment,packages,tiers,clients,settin
         <div style={{fontSize:13,marginBottom:6}}>Dodatki: {addonNames.length?addonNames.join(", "):"brak"}</div>
         {customNames.length>0 && <div style={{fontSize:13,marginBottom:6}}>Uzgodnienia własne: {customNames.join(", ")}</div>}
         {offer.offer_cost>0 && <div style={{fontSize:13,marginBottom:10,color:"#b3261e"}}>Koszt własny tego wynajmu: {fmt(offer.offer_cost)}</div>}
+        {(()=>{
+          // Rozdziel dodatki (customSum) na "zwykłe" i "przedłużenia" — żeby były widoczne osobno
+          const items = Array.isArray(offer.custom_items) ? offer.custom_items : [];
+          const extItems = items.filter(c => c && c.label && /^Przedłużenie/i.test(c.label));
+          const normalItems = items.filter(c => c && c.label && !/^Przedłużenie/i.test(c.label));
+          const extSum = extItems.reduce((s,c)=>s+(+c.price||0), 0);
+          const normalSum = normalItems.reduce((s,c)=>s+(+c.price||0), 0);
+          const addonsAndCustom = calc.addonsSum + normalSum;
+          const serviceTotal = calc.total - calc.deposit; // wynajem + transport + dodatki + przedłużenia (bez kaucji)
+          return (
         <div className="calc-box">
           <div className="calc-line"><span>Wynajem</span><span>{fmt(calc.rental)}</span></div>
           {calc.discountAmt>0 && <div className="calc-line" style={{color:"#9a6b00"}}><span>Rabat polecenia</span><span>-{fmt(calc.discountAmt)}{calc.discountType==='percent'?` (${calc.discountPct}%)`:''}</span></div>}
           {calc.voucherAmt>0 && <div className="calc-line" style={{color:"#9a6b00"}}><span>Voucher</span><span>-{fmt(calc.voucherAmt)}</span></div>}
-          <div className="calc-line"><span>Transport</span><span>{fmt(calc.transport)}</span></div>
-          <div className="calc-line"><span>Zadatek</span><span>{fmt(calc.zadatek)}</span></div>
-          <div className="calc-line"><span>Kaucja zwrotna (w dniu wynajmu)</span><span>{fmt(calc.deposit)}</span></div>
-          <div className="calc-total"><span>Wynajem (płatne teraz)</span><span>{fmt(calc.total-calc.deposit)}</span></div>
-          <div className="calc-line" style={{color:"#9a6b00",fontWeight:700}}><span>+ Kaucja (w dniu wynajmu)</span><span>{fmt(calc.deposit)}</span></div>
-          <div className="calc-total"><span>RAZEM</span><span>{fmt(calc.total)}</span></div>
+          {calc.transport>0 && <div className="calc-line"><span>Transport</span><span>{fmt(calc.transport)}</span></div>}
+          {addonsAndCustom>0 && <div className="calc-line"><span>Dodatki</span><span>{fmt(addonsAndCustom)}</span></div>}
+          {extSum>0 && <div className="calc-line" style={{color:"#9a6b00",fontWeight:600}}><span>+ Przedłużenie</span><span>{fmt(extSum)}</span></div>}
+          <div className="calc-total"><span>Razem do zapłaty za usługę</span><span>{fmt(serviceTotal)}</span></div>
+          {calc.zadatek>0 && <div className="calc-line" style={{fontSize:11.5,color:"var(--muted)",marginTop:-4}}><span>&nbsp;&nbsp;w tym zadatek {(offer.zadatek_paid || offer.status==="accepted" || offer.status==="done")?"✅ wpłacony":"do wpłaty przy rezerwacji"}</span><span>{fmt(Math.min(calc.zadatek, serviceTotal))}</span></div>}
+          <div className="calc-line" style={{color:"#9a6b00",fontWeight:700,marginTop:6}}><span>+ Kaucja zwrotna (w dniu wynajmu)</span><span>{fmt(calc.deposit)}</span></div>
+          <div className="calc-total"><span>RAZEM Z KAUCJĄ</span><span>{fmt(calc.total)}</span></div>
         </div>
-        <div className="card" style={{marginTop:12,cursor:"pointer",background:offer.zadatek_paid?"var(--green-l)":"#f6f4ee"}} onClick={()=>onToggleZadatek(offer)}>
+          );
+        })()}
+        {offer.status!=="accepted" && offer.status!=="done" && <div className="card" style={{marginTop:12,cursor:"pointer",background:offer.zadatek_paid?"var(--green-l)":"#f6f4ee"}} onClick={()=>onToggleZadatek(offer)}>
           <b style={{color:offer.zadatek_paid?"var(--green-d)":"var(--muted)"}}>{offer.zadatek_paid?"✅ Zadatek wpłacony":"⬜ Oznacz zadatek jako wpłacony"}</b>
-        </div>
+        </div>}
         {isInProgress(offer) && onExtend && <button className="btn" style={{marginTop:12,width:"100%",background:"#fdf0d9",color:"#9a6b00",fontWeight:700}} onClick={onExtend}>➕ Przedłuż wynajem</button>}
         <div style={{display:"flex",gap:8,marginTop:12}}>
           <button className="btn ghost" style={{flex:1}} onClick={onEdit}>✏️ Edytuj</button>
@@ -1230,7 +1242,7 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
         const newStatus = f.status||"draft";
         const patch = {...body,status:newStatus};
         if(f.expires_at) patch.expires_at = f.expires_at;
-        if(newStatus==="done") patch.zadatek_paid = true;
+        if(newStatus==="accepted" || newStatus==="done") patch.zadatek_paid = true;
         await sbUpdate("gs_offers","id",f.id,patch);
         setOffers(p=>p.map(x=>x.id===f.id?{...x,...patch}:x));
         setModal(null); setEditingOffer(null);
@@ -1277,7 +1289,13 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
   const advance = async (o) => {
     const order=["draft","sent","accepted","done"]; const i=order.indexOf(o.status); if(i>=order.length-1) return;
     const ns=order[i+1];
-    try{ await sbUpdate("gs_offers","id",o.id,{status:ns}); setOffers(p=>p.map(x=>x.id===o.id?{...x,status:ns}:x)); flash("Status: "+ns); }
+    // Zaakceptowana lub Zrealizowana = zadatek już wpłacony (bez tego nie byłoby akceptacji)
+    const patch = {status:ns};
+    if((ns==="accepted" || ns==="done") && !o.zadatek_paid){
+      patch.zadatek_paid = true;
+      patch.zadatek_paid_date = new Date().toISOString().slice(0,10);
+    }
+    try{ await sbUpdate("gs_offers","id",o.id,patch); setOffers(p=>p.map(x=>x.id===o.id?{...x,...patch}:x)); flash("Status: "+ns); }
     catch(ex){ setErr(String(ex.message||ex)); }
   };
   const [extendModal, setExtendModal] = useState(null); // rezerwacja do przedłużenia
