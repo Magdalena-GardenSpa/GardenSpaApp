@@ -1531,11 +1531,16 @@ function ExtendModal({offer, onClose, equipment, settings, packages, clients, vo
         </div>
 
         <div className="card" style={{background:"#fff",marginBottom:14,padding:14,border:"1px solid var(--line)"}}>
-          <div style={{fontSize:12,fontWeight:700,color:"var(--muted)",textTransform:"uppercase",letterSpacing:.4,marginBottom:8}}>📊 Podsumowanie całości</div>
-          <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:4}}><span>Pierwotna kwota (bez kaucji)</span><span>{fmt(oldCalc.total - oldCalc.deposit)}</span></div>
-          <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:4}}><span>+ Dopłata za przedłużenie</span><span>{fmt(totalExtra)}</span></div>
-          <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:6}}><span>+ Kaucja zwrotna (bez zmian)</span><span>{fmt(oldCalc.deposit)}</span></div>
-          <div style={{display:"flex",justifyContent:"space-between",fontSize:15,fontWeight:700,color:"var(--green-d)",paddingTop:8,borderTop:"1px solid var(--line)"}}><span>Nowa kwota razem</span><span>{fmt(oldCalc.total + totalExtra)}</span></div>
+          <div style={{fontSize:12,fontWeight:700,color:"var(--muted)",textTransform:"uppercase",letterSpacing:.4,marginBottom:10}}>📊 Podsumowanie całości</div>
+          <div style={{fontSize:11.5,color:"var(--muted)",marginBottom:6,fontWeight:600,letterSpacing:.3}}>PIERWOTNA WYCENA</div>
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:4}}><span>Wynajem</span><span>{fmt(oldCalc.rental)}</span></div>
+          {oldCalc.transport>0 && <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:4}}><span>Transport</span><span>{fmt(oldCalc.transport)}</span></div>}
+          {(oldCalc.addonsSum+oldCalc.customSum)>0 && <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:4}}><span>Dodatki</span><span>{fmt(oldCalc.addonsSum+oldCalc.customSum)}</span></div>}
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:8,paddingBottom:6,borderBottom:"1px dashed var(--line)"}}><span style={{color:"var(--muted)"}}>Razem pierwotnie</span><span style={{fontWeight:600}}>{fmt(oldCalc.total - oldCalc.deposit)}</span></div>
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:10,color:"var(--green-d)"}}><span>+ Opłata za przedłużenie</span><span style={{fontWeight:600}}>{fmt(totalExtra)}</span></div>
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:14,fontWeight:700,paddingTop:8,borderTop:"1px solid var(--line)",marginBottom:6}}><span>Razem bez kaucji</span><span>{fmt(oldCalc.total - oldCalc.deposit + totalExtra)}</span></div>
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:6,color:"var(--muted)"}}><span>+ Kaucja zwrotna</span><span>{fmt(oldCalc.deposit)}</span></div>
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:15,fontWeight:700,color:"var(--green-d)",paddingTop:8,borderTop:"1px solid var(--line)"}}><span>Razem z kaucją</span><span>{fmt(oldCalc.total + totalExtra)}</span></div>
         </div>
 
         <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
