@@ -275,7 +275,7 @@ function offerMsg(o, name, settings, equipment, packages, tiers, clients, vouche
   const eq = equipment.find(e=>e.id===o.equipment_id) || {};
   const calc = computeCalc(o, equipment, settings, packages, clients||[], vouchers||[]);
   let addonNames = (o.addon_ids||[]).filter(id=>id!=='p1' && id!=='p7').map(id=>(packages.find(p=>p.id===id)||{}).name).filter(Boolean);
-  const greet = name ? `Dzień dobry ${name}!` : 'Dzień dobry!';
+  const greet = (()=>{ const cli = (clients||[]).find(c=>c.phone===o.phone); const isCompany = cli && cli.client_type==='company'; if(isCompany || !name) return 'Dzień dobry,'; const first = String(name).trim().split(/\s+/)[0]; return first ? `Dzień dobry ${first},` : 'Dzień dobry,'; })();
   const useTier = o.use_tier !== false;
   const tierData = useTier ? ((tiers||[]).find(t=>t.mode===o.mode) || {}) : {};
   const tier = tierLabel(tiers, o.mode, +(o.days ?? o.qty) || 1);
@@ -700,6 +700,7 @@ function Klienci({clients,setClients,offers,equipment,settings,packages,tiers,vo
             <div className="field"><label>Miejscowość (opcjonalnie)</label><input defaultValue={sel.city||""} onBlur={e=>updateClient({city:e.target.value})}/></div>
             {(sel.client_type||"private")==="company" && <div className="field"><label>NIP</label><input defaultValue={sel.nip||""} onBlur={e=>updateClient({nip:e.target.value})} placeholder="np. 123-456-32-18"/></div>}
           </div>
+          <div className="field"><label>Messenger (link m.me/... lub nazwa użytkownika)</label><input defaultValue={sel.messenger_link||""} onBlur={e=>updateClient({messenger_link:e.target.value})} placeholder="np. m.me/jan.kowalski albo jan.kowalski"/></div>
           <div style={{display:"flex",gap:8}}>
             <button className="btn primary sm" onClick={()=>setTab("oferty")}>+ Nowa oferta</button>
           </div>
@@ -997,10 +998,11 @@ function OfferFormModal({onClose, initial, equipment, packages, tiers, clients, 
           })}
         </div>
         <div className="row3">
-          <div className="field"><label>Data od</label><input type="date" value={`${f.year}-${String(f.month+1).padStart(2,'0')}-${String(f.day).padStart(2,'0')}`} onChange={e=>{ const [y,m,d]=e.target.value.split('-').map(Number); setF(p=>({...p,year:y,month:m-1,day:d})); }}/></div>
-          <div className="field"><label>Data do</label><input type="date" value={(()=>{const e2=new Date(f.year,f.month,f.day+(+(f.days??f.qty)||1)); return `${e2.getFullYear()}-${String(e2.getMonth()+1).padStart(2,'0')}-${String(e2.getDate()).padStart(2,'0')}`;})()} onChange={e=>{ const [y,m,d]=e.target.value.split('-').map(Number); const end=new Date(y,m-1,d), start=new Date(f.year,f.month,f.day); const days=Math.max(1,Math.round((end-start)/86400000)); setF(p=>({...p,days,qty:days})); }}/></div>
+          <div className="field"><label>Data od</label><input type="date" value={`${f.year}-${String(f.month+1).padStart(2,'0')}-${String(f.day).padStart(2,'0')}`} onChange={e=>{ const [y,m,d]=e.target.value.split('-').map(Number); const start=new Date(y,m-1,d); const end=new Date(f.year,f.month,f.day+(+(f.days??f.qty)||1)); const days=Math.max(1,Math.round((end-start)/86400000)); const sd=start.getDay(),ed=end.getDay(); const isWknd = sd===5 && (ed===6||ed===0||ed===1) && days>=2 && days<=3; const newMode = (f.mode==='hour'||f.mode==='week') ? f.mode : (isWknd ? 'weekend' : 'day'); setF(p=>({...p,year:y,month:m-1,day:d,days,qty:days,mode:newMode})); }}/></div>
+          <div className="field"><label>Data do</label><input type="date" value={(()=>{const e2=new Date(f.year,f.month,f.day+(+(f.days??f.qty)||1)); return `${e2.getFullYear()}-${String(e2.getMonth()+1).padStart(2,'0')}-${String(e2.getDate()).padStart(2,'0')}`;})()} onChange={e=>{ const [y,m,d]=e.target.value.split('-').map(Number); const end=new Date(y,m-1,d), start=new Date(f.year,f.month,f.day); const days=Math.max(1,Math.round((end-start)/86400000)); const sd=start.getDay(),ed=end.getDay(); const isWknd = sd===5 && (ed===6||ed===0||ed===1) && days>=2 && days<=3; const newMode = (f.mode==='hour'||f.mode==='week') ? f.mode : (isWknd ? 'weekend' : 'day'); setF(p=>({...p,days,qty:days,mode:newMode})); }}/></div>
           <div className="field"><label>Ilość dób</label><input type="number" min="1" value={f.days??f.qty} onChange={e=>{ const days=+e.target.value||1; setF(p=>({...p,days,qty:days})); }}/></div>
         </div>
+        {(()=>{ const days=+(f.days??f.qty)||1; const start=new Date(f.year,f.month,f.day); const end=new Date(f.year,f.month,f.day+days); const sd=start.getDay(),ed=end.getDay(); const isWknd = sd===5 && (ed===6||ed===0||ed===1) && days>=2 && days<=3; const dayNames=['Nd','Pn','Wt','Śr','Cz','Pt','Sb']; return f.mode!=='hour' && f.mode!=='week' && (<div style={{fontSize:11.5,color:"#66756c",marginBottom:8,paddingLeft:2}}>💡 Zakres: {dayNames[sd]} → {dayNames[ed]} ({days} {dobaForm(days)}) → auto-tryb: <b>{isWknd?'weekend':'doba'}</b></div>); })()}
         <div className="row2">
           <div className="field"><label>Odległość od bazy (km, w 1 stronę)</label><input type="number" value={f.km} onChange={e=>set("km",+e.target.value||0)}/></div>
           <div className="field"><label>Status</label>
@@ -1155,7 +1157,7 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
   const [voucherTerm,setVoucherTerm]=useState(null);
   const [voucherSub,setVoucherSub]=useState("all");
 
-  const isExpired = o => o.status==="sent" && o.expires_at && new Date(o.expires_at) < new Date();
+  const isExpired = o => o.status==="sent" && !o.zadatek_paid && o.expires_at && new Date(o.expires_at) < new Date();
   const statusOrder = {sent:0,accepted:1,draft:2,done:3};
   const rows = offers.filter(o=>{
     if(view==="vouchers") return false;
@@ -1170,7 +1172,18 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
     let url;
     if(kind==="wa") url = `https://wa.me/${waPhone(o.phone)}?text=${encodeURIComponent(text)}`;
     else if(kind==="sms") url = `sms:${o.phone.replace(/\s/g,"")}?body=${encodeURIComponent(text)}`;
-    else url = "https://m.me/";
+    else {
+      // Messenger: użyj linku klienta jeśli podany; skopiuj treść do schowka (Messenger nie wspiera pre-fill)
+      const link = c && c.messenger_link ? String(c.messenger_link).trim() : "";
+      url = link ? (link.startsWith("http") ? link : link.startsWith("m.me/") ? "https://"+link : "https://m.me/"+link.replace(/^@/,"")) : "https://m.me/";
+      if(navigator.clipboard){ navigator.clipboard.writeText(text).catch(()=>{}); flash && flash("📋 Treść skopiowana — wklej w czacie (Ctrl+V lub długie przytrzymanie)."); }
+      if(!link && c){ flash && flash("💡 Wskazówka: dodaj Messenger klienta w karcie klienta, żeby otwierać jego czat od razu."); }
+    }
+    // Zapisz kanał wysyłki i datę
+    const via = kind==="wa" ? "whatsapp" : kind==="sms" ? "sms" : "messenger";
+    sbUpdate("gs_offers","id",o.id,{sent_via:via, sent_at:new Date().toISOString()})
+      .then(()=>{ setOffers(p=>p.map(x=>x.id===o.id?{...x,sent_via:via,sent_at:new Date().toISOString()}:x)); })
+      .catch(()=>{});
     window.open(url,"_blank");
   };
 
@@ -1202,7 +1215,7 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
         const v = vouchers.find(v=>v.code===String(f.voucher_code).trim().toUpperCase());
         if(v && isVoucherUsable(v)){ await sbUpdate("gs_vouchers","id",v.id,{redeemed:true}); setVouchers(p=>p.map(x=>x.id===v.id?{...x,redeemed:true}:x)); }
       }
-      const status = mode==="log_done" ? "done" : mode==="mark_accepted" ? "accepted" : "draft";
+      const status = mode==="log_done" ? "done" : mode==="mark_accepted" ? "accepted" : mode==="draft_send" ? "sent" : "draft";
       const body = { phone:f.phone, name:f.name, equipment_id:f.equipment_id, mode:f.mode, qty:f.qty, km:f.km,
         addon_ids:f.addon_ids, extra_equip_ids:f.extra_equip_ids, custom_items:f.custom_items,
         use_tier: f.use_tier!==false, alt_options: f.alt_options||[], set_prices: f.set_prices||{},
@@ -1265,6 +1278,50 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
     const ns=order[i+1];
     try{ await sbUpdate("gs_offers","id",o.id,{status:ns}); setOffers(p=>p.map(x=>x.id===o.id?{...x,status:ns}:x)); flash("Status: "+ns); }
     catch(ex){ setErr(String(ex.message||ex)); }
+  };
+  const extendRental = async (o) => {
+    // Aktualna data zwrotu
+    const oldEnd = new Date(o.year, o.month, o.day + (+o.days || +o.qty || 1));
+    const oldEndStr = `${oldEnd.getFullYear()}-${String(oldEnd.getMonth()+1).padStart(2,'0')}-${String(oldEnd.getDate()).padStart(2,'0')}`;
+    // Domyślnie proponujemy +1 dzień
+    const suggestEnd = new Date(oldEnd.getTime() + 86400000);
+    const suggestStr = `${suggestEnd.getFullYear()}-${String(suggestEnd.getMonth()+1).padStart(2,'0')}-${String(suggestEnd.getDate()).padStart(2,'0')}`;
+    const newEndStr = prompt(`Przedłużenie wynajmu ${equipment.find(e=>e.id===o.equipment_id)?.name||''}\n\nObecna data zwrotu: ${oldEndStr}\nDo jakiej daty przedłużyć? (RRRR-MM-DD)`, suggestStr);
+    if(!newEndStr) return;
+    const [y,m,d] = newEndStr.split('-').map(Number);
+    if(!y || !m || !d){ setErr("Zła data — użyj formatu RRRR-MM-DD (np. 2026-08-25)"); return; }
+    const newEnd = new Date(y, m-1, d);
+    const start = new Date(o.year, o.month, o.day);
+    const newDays = Math.max(1, Math.round((newEnd - start)/86400000));
+    if(newDays <= (+o.days || +o.qty || 1)){ setErr(`Nowa data (${newEndStr}) nie przedłuża wynajmu — musi być późniejsza niż ${oldEndStr}`); return; }
+    // Auto-detekcja trybu weekend/day dla nowego zakresu
+    const startDay = start.getDay(); // 0=nd, 5=pt, 6=sb
+    const endDay = newEnd.getDay();
+    let newMode = o.mode;
+    if(newMode !== 'hour' && newMode !== 'week'){
+      // Jeśli mieści się w pt→nd/pn (2-3 doby) — weekend, inaczej day
+      newMode = (startDay === 5 && (endDay === 6 || endDay === 0 || endDay === 1) && newDays >= 2 && newDays <= 3) ? 'weekend' : 'day';
+    }
+    // Sprawdź konflikt z inną rezerwacją
+    const conflict = offers.find(x => x.id !== o.id && x.status !== 'draft' && x.status !== 'done'
+      && (x.equipment_id === o.equipment_id || (x.extra_equip_ids||[]).includes(o.equipment_id))
+      && (() => { const xs = new Date(x.year, x.month, x.day); const xe = new Date(x.year, x.month, x.day + (+x.days || +x.qty || 1)); return xs < newEnd && xe > start; })());
+    if(conflict){
+      const cn = clients.find(c=>c.phone===conflict.phone);
+      if(!confirm(`⚠️ UWAGA: ten sprzęt jest już zarezerwowany przez ${cn?.name||conflict.phone} w okresie kolidującym z nową datą. Kontynuować mimo to?`)) return;
+    }
+    // Przelicz nową kwotę
+    const newO = {...o, days: newDays, qty: newDays, mode: newMode};
+    const oldCalc = computeCalc(o, equipment, settings, packages, clients, vouchers);
+    const newCalc = computeCalc(newO, equipment, settings, packages, clients, vouchers);
+    const diff = newCalc.total - oldCalc.total;
+    if(!confirm(`Podsumowanie przedłużenia:\n\nStara kwota: ${fmt(oldCalc.total)}\nNowa kwota: ${fmt(newCalc.total)}\nDopłata: ${fmt(diff)}\n\nZapisać zmiany?`)) return;
+    try{
+      const patch = { days: newDays, qty: newDays, mode: newMode };
+      await sbUpdate("gs_offers","id",o.id,patch);
+      setOffers(p=>p.map(x=>x.id===o.id?{...x,...patch}:x));
+      flash(`✓ Przedłużono do ${newEndStr}. Dopłata: ${fmt(diff)}`);
+    }catch(ex){ setErr(String(ex.message||ex)); }
   };
   const markSent = async (o) => {
     try{ await sbUpdate("gs_offers","id",o.id,{status:"sent"}); setOffers(p=>p.map(x=>x.id===o.id?{...x,status:"sent"}:x)); }
@@ -1368,10 +1425,12 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
             <span className="chip" onClick={()=>openShare(o,"wa")}>🟢 WhatsApp</span>
             <span className="chip" onClick={()=>openShare(o,"sms")}>💬 SMS</span>
             <span className="chip" onClick={()=>openShare(o,"msg")}>📩 Messenger</span>
+            {isInProgress(o) && <span className="chip on" style={{background:"#fdf0d9",color:"#9a6b00"}} onClick={()=>extendRental(o)}>➕ Przedłuż</span>}
             {st[2] && !expired && <span className="chip on" onClick={()=>{ if(o.status==="draft") markSent(o); else if(o.status==="accepted" && !hasEnded(o)){ if(confirm("Ten wynajem jeszcze się nie zakończył ("+dateRangeLabel(o)+"). Na pewno oznaczyć jako zrealizowany i przenieść do archiwum?")) advance(o); } else advance(o); }}>▸ {st[2]}</span>}
             {o.status==="done" && <span className="chip" onClick={()=>restoreOffer(o)}>↩ Przywróć do aktywnych</span>}
-            {expired && <span className="chip on" onClick={()=>refreshExpiry(o)}>🔄 Odśwież warunki</span>}
+            {expired && <span className="chip on" onClick={()=>refreshExpiry(o)} title="Klient się odezwał po terminie — przedłuż ważność oferty i wróć do aktywnych">↩ Przywróć jako aktywną</span>}
           </div>
+          {o.sent_via && <div style={{fontSize:11,color:"#1b5e20",marginTop:6}}>✓ Wysłano przez: <b>{o.sent_via==="whatsapp"?"WhatsApp":o.sent_via==="sms"?"SMS":o.sent_via==="messenger"?"Messenger":o.sent_via}</b>{o.sent_at?" · "+new Date(o.sent_at).toLocaleDateString('pl-PL'):""}</div>}
         </div>); })}
 
       {(modal==="new"||editingOffer) && <OfferFormModal offers={offers} onClose={()=>{setModal(null);setEditingOffer(null);}} initial={editingOffer?{...editingOffer,days:editingOffer.days??editingOffer.qty??1,qty:editingOffer.days??editingOffer.qty??1}:emptyForm(settings)} equipment={equipment} packages={packages} tiers={tiers} clients={clients} settings={settings} vouchers={vouchers} onSave={saveOffer}/>}
