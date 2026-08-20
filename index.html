@@ -187,10 +187,12 @@ function dateRangeLabel(o){
 
 function computeCalc(f, equipment, settings, packages, clients, vouchers){
   const eq = equipment.find(e=>e.id===f.equipment_id) || equipment[0] || {};
+  const startDow = new Date(f.year, f.month, f.day).getDay();
+  const startIsWeekend = startDow===5 || startDow===6 || startDow===0;
   const rateOf = (e) => {
     if(f.mode==='weekend') return (qtyOf()>=3 ? (+e.rate_weekend3||+e.rate_weekend||0) : (+e.rate_weekend||0));
     if(f.mode==='week') return +e.rate_week||0;
-    return +e.rate_day||0;
+    return startIsWeekend ? (+e.rate_day_weekend||+e.rate_day||0) : (+e.rate_day||0);
   };
   const extraDayRate = (e, dayIdx) => {
     const d = new Date(f.year, f.month, f.day+dayIdx).getDay();
@@ -500,11 +502,12 @@ function Kalendarz({equipment,offers,clients,goOffer,initialYm,clearCalYm}){
   const startOffset = (first.getDay()+6)%7;
   const [dayDetail,setDayDetail]=useState(null);
   const booked = {};
-  offers.filter(o=>o.status!=="draft").forEach(o=>{
+  offers.filter(o=>o.status!=="done" && o.status!=="draft" ? true : o.status==="draft").forEach(o=>{
     const ids = [o.equipment_id,...(o.extra_equip_ids||[])];
     const eqs = ids.map(id=>equipment.find(e=>e.id===id)).filter(Boolean);
     const eq = eqs[0];
     const isSet = eqs.length>1;
+    const isPending = o.status==="draft" || (o.status==="sent" && !o.zadatek_paid);
     const start = new Date(o.year,o.month,o.day);
     for(let i=0; i<=(o.days||1); i++){
       const dt = new Date(start); dt.setDate(dt.getDate()+i);
@@ -512,12 +515,14 @@ function Kalendarz({equipment,offers,clients,goOffer,initialYm,clearCalYm}){
       const d = dt.getDate();
       const prev = booked[d];
       const colors = eqs.map(e=>e.color||"#153826");
+      const hasInvoice = !!o.invoice_issued;
       if(prev){
         const allOffers = [...prev.offers,o];
         booked[d] = {...prev, colors:[...new Set([...prev.colors,...colors])], sets: prev.sets||isSet,
-          offers: allOffers, multiClient: [...new Set(allOffers.map(x=>x.phone))].length>1};
+          offers: allOffers, multiClient: [...new Set(allOffers.map(x=>x.phone))].length>1,
+          anyInvoice: prev.anyInvoice || hasInvoice, pending: prev.pending || isPending};
       } else {
-        booked[d] = {colors, shape:eq?eq.shape||"square":"square", pending:o.status==="sent", gift:!!o.voucher_code, sets:isSet, offers:[o], multiClient:false, offer:o};
+        booked[d] = {colors, shape:eq?eq.shape||"square":"square", pending:isPending, gift:!!o.voucher_code, sets:isSet, offers:[o], multiClient:false, offer:o, anyInvoice:hasInvoice};
       }
     }
   });
@@ -559,8 +564,9 @@ function Kalendarz({equipment,offers,clients,goOffer,initialYm,clearCalYm}){
               <span style={{position:"relative",zIndex:1,textShadow:b?"0 1px 2px rgba(0,0,0,.45)":"none"}}>{d}</span>
               {b && b.gift && <span style={{position:"absolute",top:-2,right:-1,fontSize:9,zIndex:2}}>🎁</span>}
               {b && b.multiClient && <span style={{position:"absolute",bottom:0,left:2,fontSize:8,fontWeight:700,zIndex:2,lineHeight:1,textShadow:"0 1px 2px rgba(0,0,0,.5)"}}>👥</span>}
-              {b && !b.multiClient && (b.offers||[]).length>1 && <span style={{position:"absolute",bottom:0,left:2,fontSize:8,fontWeight:700,zIndex:2,lineHeight:1,textShadow:"0 1px 2px rgba(0,0,0,.5)"}}>🧾</span>}
+              {b && !b.multiClient && (b.offers||[]).length>1 && <span style={{position:"absolute",bottom:0,left:2,fontSize:8,fontWeight:700,zIndex:2,lineHeight:1,textShadow:"0 1px 2px rgba(0,0,0,.5)"}}>🗓</span>}
               {b && !b.multiClient && (b.offers||[]).length===1 && b.sets && <span style={{position:"absolute",bottom:0,left:2,fontSize:8,fontWeight:700,zIndex:2,lineHeight:1,textShadow:"0 1px 2px rgba(0,0,0,.5)"}}>🔗</span>}
+              {b && b.anyInvoice && <span title="Faktura wystawiona" style={{position:"absolute",bottom:0,right:2,fontSize:8,fontWeight:700,zIndex:2,lineHeight:1,textShadow:"0 1px 2px rgba(0,0,0,.5)"}}>📄</span>}
             </div>);
           })}
         </div>
@@ -569,10 +575,11 @@ function Kalendarz({equipment,offers,clients,goOffer,initialYm,clearCalYm}){
             borderRadius:e.shape==='round'?'50%':e.shape==='cylinder'?'50%/30%':2,marginRight:5}}>
             {e.shape==='cylinder' && <><span style={{position:"absolute",left:0,right:0,top:"28%",height:1,background:"rgba(255,255,255,.45)"}}/><span style={{position:"absolute",left:0,right:0,top:"68%",height:1,background:"rgba(255,255,255,.45)"}}/></>}
             </span>{e.name}</span>))}
-          <span><span style={{display:"inline-block",width:12,height:9,border:"1.5px dashed #8a8378",borderRadius:2,marginRight:5}}/>Oferta wysłana (oczekuje)</span>
+          <span><span style={{display:"inline-block",width:12,height:9,border:"1.5px dashed #8a8378",borderRadius:2,marginRight:5}}/>Oferta bez zadatku (robocza lub wysłana)</span>
           <span><span style={{display:"inline-block",width:12,height:9,background:"linear-gradient(135deg,#153826 0%,#153826 50%,#c9a227 50%,#c9a227 100%)",boxShadow:"inset 0 0 0 1.5px #fff",marginRight:5}}/>🔗 Zestaw (1 klient, 2+ sprzęty)</span>
-          <span><span style={{display:"inline-block",width:12,height:9,background:"linear-gradient(135deg,#153826 0%,#153826 50%,#3a6350 50%,#3a6350 100%)",boxShadow:"inset 0 0 0 1.5px #fff",marginRight:5}}/>🧾 Kilka osobnych wynajmów 1 klienta</span>
-          <span><span style={{display:"inline-block",width:12,height:9,background:"linear-gradient(135deg,#153826 0%,#153826 50%,#3a6350 50%,#3a6350 100%)",boxShadow:"inset 0 0 0 1.5px #fff",marginRight:5}}/>👥 Różni klienci w tym dniu</span>
+          <span>🗓 Kilka osobnych wynajmów 1 klienta</span>
+          <span>👥 Różni klienci w tym dniu</span>
+          <span>📄 Faktura wystawiona</span>
           <span>🎁 Realizacja vouchera</span>
         </div>
         <h3 style={{fontSize:12,color:"var(--muted)",textTransform:"uppercase",marginBottom:8}}>Rezerwacje w tym miesiącu</h3>
@@ -592,12 +599,13 @@ function Kalendarz({equipment,offers,clients,goOffer,initialYm,clearCalYm}){
               <button className="btn ghost sm" onClick={()=>setDayDetail(null)}>✕</button>
             </div>
             <p className="muted" style={{fontSize:12,marginBottom:12}}>
-              {dOffers.length===1 ? (info.sets?"🔗 Zestaw — 1 klient, kilka sprzętów":"1 wynajem") : (info.multiClient ? `👥 ${dOffers.length} wynajmy — różni klienci` : `🧾 ${dOffers.length} osobne wynajmy — ten sam klient`)}
+              {dOffers.length===1 ? (info.sets?"🔗 Zestaw — 1 klient, kilka sprzętów":"1 wynajem") : (info.multiClient ? `👥 ${dOffers.length} wynajmy — różni klienci` : `🗓 ${dOffers.length} osobne wynajmy — ten sam klient`)}
+              {info.anyInvoice && " · 📄 Faktura wystawiona"}
             </p>
             {dOffers.map(o=>{ const c=clients.find(x=>x.phone===o.phone);
               const eqs=[o.equipment_id,...(o.extra_equip_ids||[])].map(id=>equipment.find(e=>e.id===id)).filter(Boolean);
               const calc=computeCalc(o,equipment,{free_km:60,km_rate:2,zadatek:200},[],clients,[]);
-              const st = o.status==="sent"?"⏳ Oferta wysłana":o.status==="done"?"✅ Zrealizowane":isInProgress(o)?"🔄 W trakcie najmu":"📅 Zarezerwowane";
+              const st = o.status==="draft"?"📝 Robocza":o.status==="sent"?(o.zadatek_paid?"💚 Wysłana + zadatek":"⏳ Oferta wysłana — brak zadatku"):o.status==="done"?"✅ Zrealizowane":isInProgress(o)?"🔄 W trakcie najmu":"📅 Zarezerwowane";
               return (<div key={o.id} className="card" style={{marginBottom:8,cursor:"pointer"}} onClick={()=>{setDayDetail(null); goOffer&&goOffer(o);}}>
                 <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"flex-start"}}>
                   <div style={{minWidth:0}}>
@@ -612,6 +620,7 @@ function Kalendarz({equipment,offers,clients,goOffer,initialYm,clearCalYm}){
                   <div style={{textAlign:"right",whiteSpace:"nowrap"}}>
                     <b style={{color:"var(--green-d)"}}>{fmt(calc.total-calc.deposit)}</b>
                     <div className="muted" style={{fontSize:11,marginTop:2}}>{st}</div>
+                    {o.invoice_issued && <div style={{fontSize:10.5,marginTop:2,color:"var(--green-d)",fontWeight:600}}>📄 Faktura</div>}
                   </div>
                 </div>
               </div>);
@@ -845,7 +854,9 @@ function OfferFormModal({onClose, initial, equipment, packages, tiers, clients, 
   const rate = (mode)=>{
     if(mode==='weekend') return (+(f.days??f.qty)||1)>=3 ? (+eqSel.rate_weekend3||+eqSel.rate_weekend||0) : (+eqSel.rate_weekend||0);
     if(mode==='week') return +eqSel.rate_week||0;
-    return +eqSel.rate_day||0;
+    const startDow = new Date(f.year, f.month, f.day).getDay();
+    const startIsWeekend = startDow===5 || startDow===6 || startDow===0;
+    return startIsWeekend ? (+eqSel.rate_day_weekend||+eqSel.rate_day||0) : (+eqSel.rate_day||0);
   };
 
   return (
@@ -1098,7 +1109,7 @@ function OfferFormModal({onClose, initial, equipment, packages, tiers, clients, 
   );
 }
 
-function OfferDetailModal({offer,onClose,equipment,packages,tiers,clients,settings,vouchers,onToggleZadatek,onEdit,onDelete,onExtend}){
+function OfferDetailModal({offer,onClose,equipment,packages,tiers,clients,settings,vouchers,onToggleZadatek,onEdit,onDelete,onExtend,onToggleInvoice}){
   const eq = equipment.find(e=>e.id===offer.equipment_id);
   const calc = computeCalc(offer,equipment,settings,packages,clients,vouchers);
   const c = clients.find(c=>c.phone===offer.phone);
@@ -1203,6 +1214,10 @@ function OfferDetailModal({offer,onClose,equipment,packages,tiers,clients,settin
         {offer.status!=="accepted" && offer.status!=="done" && <div className="card" style={{marginTop:12,cursor:"pointer",background:offer.zadatek_paid?"var(--green-l)":"#f6f4ee"}} onClick={()=>onToggleZadatek(offer)}>
           <b style={{color:offer.zadatek_paid?"var(--green-d)":"var(--muted)"}}>{offer.zadatek_paid?"✅ Zadatek wpłacony":"⬜ Oznacz zadatek jako wpłacony"}</b>
         </div>}
+        <div className="card" style={{marginTop:12,cursor:"pointer",background:offer.invoice_issued?"#e8f0e9":"#f6f4ee"}} onClick={()=>onToggleInvoice&&onToggleInvoice(offer)}>
+          <b style={{color:offer.invoice_issued?"var(--green-d)":"var(--muted)"}}>{offer.invoice_issued?"✅ Faktura wystawiona":"⬜ Oznacz jako fakturowaną"}</b>
+          {offer.invoice_issued && offer.invoice_date && <div style={{fontSize:11,color:"var(--muted)",marginTop:2}}>📄 {new Date(offer.invoice_date).toLocaleDateString('pl-PL')}</div>}
+        </div>
         {isInProgress(offer) && onExtend && <button className="btn" style={{marginTop:12,width:"100%",background:"#fdf0d9",color:"#9a6b00",fontWeight:700}} onClick={onExtend}>➕ Przedłuż wynajem</button>}
         <div style={{display:"flex",gap:8,marginTop:12}}>
           <button className="btn ghost" style={{flex:1}} onClick={onEdit}>✏️ Edytuj</button>
@@ -1368,6 +1383,17 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
       setModal(m=>m && m.id===o.id ? {...m,zadatek_paid:!m.zadatek_paid} : m); }
     catch(ex){ setErr(String(ex.message||ex)); }
   };
+  const toggleInvoice = async (o) => {
+    try{
+      const nv = !o.invoice_issued;
+      const patch = {invoice_issued: nv};
+      if(nv && !o.invoice_date) patch.invoice_date = new Date().toISOString().slice(0,10);
+      await sbUpdate("gs_offers","id",o.id,patch);
+      setOffers(p=>p.map(x=>x.id===o.id?{...x,...patch}:x));
+      setModal(m=>m && m.id===o.id ? {...m,...patch} : m);
+      flash(nv?"📄 Oznaczono jako fakturowaną":"Zdjęto oznaczenie faktury");
+    }catch(ex){ setErr(String(ex.message||ex)); }
+  };
 
   const expiredCount = offers.filter(isExpired).length;
   const doneCount = offers.filter(o=>o.status==="done").length;
@@ -1466,7 +1492,7 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
         </div>); })}
 
       {(modal==="new"||editingOffer) && <OfferFormModal offers={offers} onClose={()=>{setModal(null);setEditingOffer(null);}} initial={editingOffer?{...editingOffer,days:editingOffer.days??editingOffer.qty??1,qty:editingOffer.days??editingOffer.qty??1}:emptyForm(settings)} equipment={equipment} packages={packages} tiers={tiers} clients={clients} settings={settings} vouchers={vouchers} onSave={saveOffer}/>}
-      {modal && modal!=="new" && <OfferDetailModal offer={modal} onClose={()=>setModal(null)} equipment={equipment} packages={packages} tiers={tiers} clients={clients} settings={settings} vouchers={vouchers} onToggleZadatek={toggleZadatek} onEdit={()=>{setEditingOffer(modal);setModal(null);}} onDelete={()=>delOffer(modal)} onExtend={()=>{ const o=modal; setModal(null); setExtendModal(o); }}/>}
+      {modal && modal!=="new" && <OfferDetailModal offer={modal} onClose={()=>setModal(null)} equipment={equipment} packages={packages} tiers={tiers} clients={clients} settings={settings} vouchers={vouchers} onToggleZadatek={toggleZadatek} onToggleInvoice={toggleInvoice} onEdit={()=>{setEditingOffer(modal);setModal(null);}} onDelete={()=>delOffer(modal)} onExtend={()=>{ const o=modal; setModal(null); setExtendModal(o); }}/>}
       {voucherModal && <VoucherModal onClose={()=>setVoucherModal(false)} settings={settings} clients={clients} equipment={equipment} offers={offers} setOffers={setOffers} setErr={setErr} flash={flash} setVouchers={setVouchers}/>}
       {voucherEdit && <VoucherModal onClose={()=>setVoucherEdit(null)} initial={voucherEdit} settings={settings} clients={clients} equipment={equipment} offers={offers} setOffers={setOffers} setErr={setErr} flash={flash} setVouchers={setVouchers}/>}
       {voucherTerm && <VoucherTermModal voucher={voucherTerm} onClose={()=>setVoucherTerm(null)} equipment={equipment} clients={clients} settings={settings} setErr={setErr} flash={flash} setVouchers={setVouchers} setOffers={setOffers}/>}
@@ -1949,6 +1975,19 @@ function Raport({offers,equipment,settings,packages,clients,vouchers,costs,goCal
         <div className="card stat"><div className="v" style={{color:thisMonthNet>=0?"var(--green-d)":"#b3261e"}}>{fmt(thisMonthNet)}</div><div className="l">Zysk netto (ten miesiąc)</div></div>
         <div className="card stat"><div className="v">{marginPct}%</div><div className="l">Marża</div></div>
       </div>
+      {(()=>{
+        const curMonthOffers = (byPeriod[curKey]||[]);
+        const invoiced = curMonthOffers.filter(o=>o.invoice_issued).length;
+        const notInvoiced = curMonthOffers.length - invoiced;
+        const allTimeInvoiced = realized.filter(o=>o.invoice_issued).length;
+        return (
+        <div className="card" style={{marginBottom:16,padding:14,background:"#f0f7f1",border:"1px solid var(--green)"}}>
+          <div style={{fontSize:12,fontWeight:700,color:"var(--green-d)",textTransform:"uppercase",letterSpacing:.4,marginBottom:8}}>📄 Faktury</div>
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:4}}><span>Wystawione w tym miesiącu</span><span style={{fontWeight:600}}>{invoiced} z {curMonthOffers.length}</span></div>
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:4}}><span>Do wystawienia (ten miesiąc)</span><span style={{fontWeight:600,color:notInvoiced>0?"#9a6b00":"var(--muted)"}}>{notInvoiced}</span></div>
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"var(--muted)",paddingTop:6,borderTop:"1px dashed #cfe0d1",marginTop:6}}><span>Łącznie od początku</span><span>{allTimeInvoiced} z {realized.length}</span></div>
+        </div>);
+      })()}
       <h3 style={{fontSize:12,color:"var(--muted)",textTransform:"uppercase",marginBottom:8}}>ROI — zwrot z inwestycji w sprzęt</h3>
       <div className="card" style={{marginBottom:10}}>
         <div className="calc-line"><span>Inwestycja w sprzęt (łącznie)</span><span>{fmt(totalInvestment)}</span></div>
@@ -2078,7 +2117,11 @@ function Ustawienia({settings,setSettings,equipment,setEquipment,packages,setPac
           {COLOR_SWATCHES.map(c=>(<span key={c} className={"swatch"+(e.color===c?" sel":"")} style={{background:c}} onClick={()=>updEquip(e.id,{color:c})}/>))}
         </div>
         <div className="row3" style={{marginBottom:8}}>
-          <div><label>Pierwsza doba</label><input type="number" defaultValue={e.rate_day} onBlur={ev=>updEquip(e.id,{rate_day:+ev.target.value||0})}/></div>
+        <div className="row3" style={{marginBottom:8}}>
+          <div><label>Pierwsza doba (pn-czw)</label><input type="number" defaultValue={e.rate_day} onBlur={ev=>updEquip(e.id,{rate_day:+ev.target.value||0})}/></div>
+          <div><label>Pierwsza doba (weekend)</label><input type="number" defaultValue={e.rate_day_weekend} onBlur={ev=>updEquip(e.id,{rate_day_weekend:+ev.target.value||0})} placeholder="np. wyższa niż w tygodniu"/></div>
+        </div>
+        <div className="row3" style={{marginBottom:8}}>
           <div><label>Kolejna doba (pn-czw)</label><input type="number" defaultValue={e.rate_extra_day} onBlur={ev=>updEquip(e.id,{rate_extra_day:+ev.target.value||0})}/></div>
           <div><label>Kolejna doba (weekend)</label><input type="number" defaultValue={e.rate_extra_day_weekend} onBlur={ev=>updEquip(e.id,{rate_extra_day_weekend:+ev.target.value||0})}/></div>
         </div>
