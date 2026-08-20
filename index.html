@@ -2243,7 +2243,41 @@ function Ustawienia({settings,setSettings,equipment,setEquipment,packages,setPac
   );
 }
 
-ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+class ErrorBoundary extends React.Component {
+  constructor(props){ super(props); this.state = {hasError:false, error:null}; }
+  static getDerivedStateFromError(error){ return {hasError:true, error}; }
+  componentDidCatch(error, info){ console.error("[ErrorBoundary] Aplikacja się wywaliła:", error, info); }
+  render(){
+    if(this.state.hasError){
+      const msg = String(this.state.error && (this.state.error.message||this.state.error) || "nieznany błąd");
+      return (
+        <div style={{padding:"24px 16px",maxWidth:520,margin:"40px auto",fontFamily:"system-ui,-apple-system,sans-serif"}}>
+          <div style={{background:"#fdecea",border:"1px solid #f5b3ab",borderRadius:10,padding:18}}>
+            <div style={{fontSize:22,marginBottom:8}}>⚠️</div>
+            <h2 style={{margin:"0 0 8px",color:"#8a2818",fontSize:18}}>Coś poszło nie tak</h2>
+            <p style={{margin:"0 0 12px",color:"#5c1a10",fontSize:14,lineHeight:1.5}}>Aplikacja natrafiła na problem i musiała się zatrzymać. Najczęściej pomaga odświeżenie strony.</p>
+            <details style={{marginBottom:14,fontSize:12,color:"#7a2a1a"}}>
+              <summary style={{cursor:"pointer",fontWeight:600,marginBottom:6}}>Szczegóły techniczne</summary>
+              <div style={{background:"#fff",padding:8,borderRadius:6,marginTop:6,fontFamily:"monospace",fontSize:11,wordBreak:"break-word"}}>{msg}</div>
+            </details>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+              <button onClick={()=>window.location.reload()} style={{background:"#153826",color:"#fff",border:"none",padding:"10px 16px",borderRadius:6,fontSize:14,fontWeight:600,cursor:"pointer"}}>🔄 Odśwież stronę</button>
+              <button onClick={()=>{this.setState({hasError:false,error:null});}} style={{background:"#fff",color:"#153826",border:"1px solid #153826",padding:"10px 16px",borderRadius:6,fontSize:14,fontWeight:600,cursor:"pointer"}}>↩ Spróbuj ponownie</button>
+            </div>
+            <p style={{margin:"14px 0 0",fontSize:11,color:"#7a5545",lineHeight:1.4}}>Jeśli błąd wraca — zrób zrzut ekranu tej strony (razem ze szczegółami technicznymi) i wyślij do wsparcia.</p>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+try {
+  ReactDOM.createRoot(document.getElementById("root")).render(<ErrorBoundary><App/></ErrorBoundary>);
+} catch(ex) {
+  document.getElementById("root").innerHTML = '<div style="padding:24px;font-family:sans-serif;max-width:520px;margin:40px auto;background:#fdecea;border:1px solid #f5b3ab;border-radius:10px;color:#5c1a10"><h2 style="margin:0 0 8px;font-size:18px">⚠️ Aplikacja nie mogła się uruchomić</h2><p style="margin:0 0 12px;font-size:14px">'+String(ex.message||ex)+'</p><button onclick="window.location.reload()" style="background:#153826;color:#fff;border:none;padding:10px 16px;border-radius:6px;font-size:14px;font-weight:600">🔄 Odśwież stronę</button></div>';
+}
 </script>
 
 <!--
