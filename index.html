@@ -502,7 +502,7 @@ function Kalendarz({equipment,offers,clients,goOffer,initialYm,clearCalYm}){
   const startOffset = (first.getDay()+6)%7;
   const [dayDetail,setDayDetail]=useState(null);
   const booked = {};
-  offers.filter(o=>o.status!=="done" && o.status!=="draft" ? true : o.status==="draft").forEach(o=>{
+  offers.filter(o=>o.status!=="done").forEach(o=>{
     const ids = [o.equipment_id,...(o.extra_equip_ids||[])];
     const eqs = ids.map(id=>equipment.find(e=>e.id===id)).filter(Boolean);
     const eq = eqs[0];
