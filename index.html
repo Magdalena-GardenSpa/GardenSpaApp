@@ -544,7 +544,7 @@ function Kalendarz({equipment,offers,clients,goOffer,initialYm,clearCalYm}){
   const [dayDetail,setDayDetail]=useState(null);
   const booked = {};
   const isExpiredCal = o => o.status==="sent" && !o.zadatek_paid && o.expires_at && new Date(o.expires_at) < new Date();
-  offers.filter(o=>o.status!=="done" && !isExpiredCal(o)).forEach(o=>{
+  offers.filter(o=>!isExpiredCal(o)).forEach(o=>{
     const ids = [o.equipment_id,...(o.extra_equip_ids||[])];
     const eqs = ids.map(id=>equipment.find(e=>e.id===id)).filter(Boolean);
     const eq = eqs[0];
@@ -612,7 +612,6 @@ function Kalendarz({equipment,offers,clients,goOffer,initialYm,clearCalYm}){
               <span style={{position:"relative",zIndex:1,textShadow:b&&!pending?"0 1px 2px rgba(0,0,0,.45)":"none"}}>{d}</span>
               {b && b.gift && <span style={{position:"absolute",top:-2,right:-1,fontSize:9,zIndex:2}}>🎁</span>}
               {b && b.multiClient && <span style={{position:"absolute",bottom:0,left:2,fontSize:8,fontWeight:700,zIndex:2,lineHeight:1,textShadow:"0 1px 2px rgba(0,0,0,.5)"}}>👥</span>}
-              {b && !b.multiClient && (b.offers||[]).length>1 && <span style={{position:"absolute",bottom:0,left:2,fontSize:8,fontWeight:700,zIndex:2,lineHeight:1,textShadow:"0 1px 2px rgba(0,0,0,.5)"}}>🗓</span>}
               {b && !b.multiClient && (b.offers||[]).length===1 && b.sets && <span style={{position:"absolute",bottom:0,left:2,fontSize:8,fontWeight:700,zIndex:2,lineHeight:1,textShadow:"0 1px 2px rgba(0,0,0,.5)"}}>🔗</span>}
             </div>);
           })}
@@ -624,7 +623,6 @@ function Kalendarz({equipment,offers,clients,goOffer,initialYm,clearCalYm}){
             </span>{e.name}</span>))}
           <span><span style={{display:"inline-block",width:12,height:9,border:"1.5px dashed #8a8378",borderRadius:2,marginRight:5}}/>Oferta bez zadatku (robocza lub wysłana)</span>
           <span><span style={{display:"inline-block",width:12,height:9,background:"linear-gradient(135deg,#153826 0%,#153826 50%,#c9a227 50%,#c9a227 100%)",boxShadow:"inset 0 0 0 1.5px #fff",marginRight:5}}/>🔗 Zestaw (1 klient, 2+ sprzęty)</span>
-          <span>🗓 Kilka osobnych wynajmów 1 klienta</span>
           <span>👥 Różni klienci w tym dniu</span>
           <span>🎁 Realizacja vouchera</span>
         </div>
@@ -645,7 +643,7 @@ function Kalendarz({equipment,offers,clients,goOffer,initialYm,clearCalYm}){
               <button className="btn ghost sm" onClick={()=>setDayDetail(null)}>✕</button>
             </div>
             <p className="muted" style={{fontSize:12,marginBottom:12}}>
-              {dOffers.length===1 ? (info.sets?"🔗 Zestaw — 1 klient, kilka sprzętów":"1 wynajem") : (info.multiClient ? `👥 ${dOffers.length} wynajmy — różni klienci` : `🗓 ${dOffers.length} osobne wynajmy — ten sam klient`)}
+              {dOffers.length===1 ? (info.sets?"🔗 Zestaw — 1 klient, kilka sprzętów":"1 wynajem") : (info.multiClient ? `👥 ${dOffers.length} wynajmy — różni klienci` : `🔗 ${dOffers.length} pozycje — ten sam klient`)}
             </p>
             {dOffers.map(o=>{ const c=clients.find(x=>x.phone===o.phone);
               const eqs=[o.equipment_id,...(o.extra_equip_ids||[])].map(id=>equipment.find(e=>e.id===id)).filter(Boolean);
@@ -863,7 +861,7 @@ function BroadcastModal({clients,filtered,onClose}){
 /* ================= OFERTY ================= */
 function emptyForm(settings){
   return { phone:"", name:"", equipment_id:"", mode:"day", qty:1, km:10, addon_ids:[], extra_equip_ids:[], custom_items:[], use_tier:true, alt_options:[],
-    rate_override:"", transport_override:"", zadatek_override:"", deposit_override:"", voucher_code:"", offer_cost:0, set_prices:{},
+    rate_override:"", transport_override:"", zadatek_override:"", deposit_override:"", voucher_code:"", offer_cost:0, set_prices:{}, invoice_required:false,
     year:new Date().getFullYear(), month:new Date().getMonth(), day:new Date().getDate(), days:1, status:"draft" };
 }
 
@@ -964,6 +962,9 @@ function OfferFormModal({onClose, initial, equipment, packages, tiers, clients, 
             </div>
             <label style={{display:"flex",alignItems:"center",gap:8,marginTop:8,cursor:"pointer"}}>
               <input type="checkbox" checked={!!f.deposit_returned} onChange={e=>set("deposit_returned",e.target.checked)} style={{width:16,height:16,flexShrink:0}}/> Kaucja zwrócona klientowi
+            </label>
+            <label style={{display:"flex",alignItems:"center",gap:8,marginTop:8,cursor:"pointer"}}>
+              <input type="checkbox" checked={!!f.invoice_required} onChange={e=>set("invoice_required",e.target.checked)} style={{width:16,height:16,flexShrink:0}}/> 📄 Klient wymaga faktury
             </label>
             <div className="row2" style={{marginTop:10}}>
               <div className="field"><label>Kod vouchera podarunkowego (opcjonalnie)</label>
@@ -1369,13 +1370,18 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
         discount_value_override: (f.discount_value_override===""||f.discount_value_override==null)?null:+f.discount_value_override,
         rate_override: f.rate_override===""?null:+f.rate_override, transport_override: f.transport_override===""?null:+f.transport_override,
         zadatek_override: f.zadatek_override===""?null:+f.zadatek_override, deposit_override: f.deposit_override===""?null:+f.deposit_override,
-        voucher_code:f.voucher_code, offer_cost:f.offer_cost, year:f.year, month:f.month, day:f.day, days:f.days||f.qty||1, delivery_address:f.delivery_address||"", deposit_returned:!!f.deposit_returned,
+        voucher_code:f.voucher_code, offer_cost:f.offer_cost, year:f.year, month:f.month, day:f.day, days:f.days||f.qty||1, delivery_address:f.delivery_address||"", deposit_returned:!!f.deposit_returned, invoice_required:!!f.invoice_required,
         frozen_rates: snap.frozen_rates, frozen_settings: snap.frozen_settings };
       if(f.id){
         const newStatus = f.status||"draft";
         const patch = {...body,status:newStatus};
         if(f.expires_at) patch.expires_at = f.expires_at;
         if(newStatus==="accepted" || newStatus==="done") patch.zadatek_paid = true;
+        // Zrealizowane + klient wymaga faktury = auto-oznacz jako wystawioną
+        if(newStatus==="done" && patch.invoice_required && !f.invoice_issued){
+          patch.invoice_issued = true;
+          patch.invoice_date = new Date().toISOString().slice(0,10);
+        }
         await sbUpdate("gs_offers","id",f.id,patch);
         setOffers(p=>p.map(x=>x.id===f.id?{...x,...patch}:x));
         setModal(null); setEditingOffer(null);
@@ -1388,6 +1394,11 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
       const maxN = sameYear.reduce((m,o)=>Math.max(m, parseInt(o.offer_no.split('/')[2])||0), 0);
       const offer_no = `OF/${year}/${String(maxN+1).padStart(4,'0')}`;
       const insertBody = {...body, offer_no, status, expires_at: f.expires_at || computeExpiry(settings), zadatek_paid: mode==="log_done"||mode==="mark_accepted"};
+      // Szybki wpis zrealizowanego + klient wymaga faktury = auto-oznacz jako wystawioną
+      if(mode==="log_done" && insertBody.invoice_required){
+        insertBody.invoice_issued = true;
+        insertBody.invoice_date = new Date().toISOString().slice(0,10);
+      }
       const ins = await sbInsert("gs_offers",insertBody);
       const newOffer = {...ins[0], addon_ids:ins[0].addon_ids||[], extra_equip_ids:ins[0].extra_equip_ids||[], custom_items:ins[0].custom_items||[]};
       setOffers(p=>[newOffer,...p]);
@@ -1428,7 +1439,14 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
       patch.zadatek_paid = true;
       patch.zadatek_paid_date = new Date().toISOString().slice(0,10);
     }
-    try{ await sbUpdate("gs_offers","id",o.id,patch); setOffers(p=>p.map(x=>x.id===o.id?{...x,...patch}:x)); flash("Status: "+ns); }
+    // Zrealizowane + klient wymagał faktury = auto-oznacz jako wystawioną
+    if(ns==="done" && o.invoice_required && !o.invoice_issued){
+      patch.invoice_issued = true;
+      patch.invoice_date = new Date().toISOString().slice(0,10);
+    }
+    try{ await sbUpdate("gs_offers","id",o.id,patch); setOffers(p=>p.map(x=>x.id===o.id?{...x,...patch}:x));
+      const msg = patch.invoice_issued ? `Status: ${ns} · 📄 Fakturę oznaczono jako wystawioną` : `Status: ${ns}`;
+      flash(msg); }
     catch(ex){ setErr(String(ex.message||ex)); }
   };
   const [extendModal, setExtendModal] = useState(null); // rezerwacja do przedłużenia
@@ -2041,23 +2059,33 @@ function Raport({offers,equipment,settings,packages,clients,vouchers,costs,goCal
       </div>
       {(()=>{
         const curMonthOffers = (byPeriod[curKey]||[]);
-        const invoicedList = curMonthOffers.filter(o=>o.invoice_issued);
-        const notInvoicedList = curMonthOffers.filter(o=>!o.invoice_issued);
+        // TYLKO oferty gdzie klient wymaga faktury (checkbox w formularzu)
+        const requiresInvoice = curMonthOffers.filter(o=>o.invoice_required);
+        const invoicedList = requiresInvoice.filter(o=>o.invoice_issued);
+        const notInvoicedList = requiresInvoice.filter(o=>!o.invoice_issued);
         const invoicedSum = revenueForOffers(invoicedList);
         const notInvoicedSum = revenueForOffers(notInvoicedList);
         const allTimeInvoicedList = realized.filter(o=>o.invoice_issued);
         const allTimeInvoicedSum = revenueForOffers(allTimeInvoicedList);
+        if(requiresInvoice.length===0 && allTimeInvoicedList.length===0) return null;
+        const periodName = period==="month" ? "miesiąc" : period==="quarter" ? "kwartał" : "rok";
+        const periodLabelText = periodLabel(curKey);
         return (
         <div className="card" style={{marginBottom:16,padding:14,background:"#f0f7f1",border:"1px solid var(--green)"}}>
-          <div style={{fontSize:12,fontWeight:700,color:"var(--green-d)",textTransform:"uppercase",letterSpacing:.4,marginBottom:10}}>📄 Faktury</div>
-          <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:5}}>
-            <span>Wystawione w tym miesiącu ({invoicedList.length} z {curMonthOffers.length})</span>
-            <span style={{fontWeight:700,color:"var(--green-d)"}}>{fmt(invoicedSum)}</span>
-          </div>
-          <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:5}}>
-            <span style={{color:notInvoicedList.length>0?"#9a6b00":"var(--muted)"}}>Do wystawienia (ten miesiąc) — {notInvoicedList.length}</span>
-            <span style={{fontWeight:600,color:notInvoicedList.length>0?"#9a6b00":"var(--muted)"}}>{fmt(notInvoicedSum)}</span>
-          </div>
+          <div style={{fontSize:12,fontWeight:700,color:"var(--green-d)",textTransform:"uppercase",letterSpacing:.4,marginBottom:4}}>📄 Faktury (tylko gdzie klient wymaga)</div>
+          <div style={{fontSize:11,color:"var(--muted)",marginBottom:10}}>Okres: <b>{periodLabelText}</b> · zmień powyżej: Miesiąc / Kwartał / Rok</div>
+          {requiresInvoice.length===0 ? (
+            <div style={{fontSize:12.5,color:"var(--muted)",marginBottom:6}}>W tym okresie żaden klient nie wymagał faktury.</div>
+          ) : (<>
+            <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:5}}>
+              <span>✅ Wystawione ({invoicedList.length} z {requiresInvoice.length})</span>
+              <span style={{fontWeight:700,color:"var(--green-d)"}}>{fmt(invoicedSum)}</span>
+            </div>
+            <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:5}}>
+              <span style={{color:notInvoicedList.length>0?"#9a6b00":"var(--muted)"}}>⏳ Do wystawienia — {notInvoicedList.length}</span>
+              <span style={{fontWeight:600,color:notInvoicedList.length>0?"#9a6b00":"var(--muted)"}}>{fmt(notInvoicedSum)}</span>
+            </div>
+          </>)}
           <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"var(--muted)",paddingTop:8,borderTop:"1px dashed #cfe0d1",marginTop:6}}>
             <span>Łącznie wystawione od początku ({allTimeInvoicedList.length} szt.)</span>
             <span style={{fontWeight:600}}>{fmt(allTimeInvoicedSum)}</span>
