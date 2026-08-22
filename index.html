@@ -2193,7 +2193,6 @@ function Ustawienia({settings,setSettings,equipment,setEquipment,packages,setPac
           {COLOR_SWATCHES.map(c=>(<span key={c} className={"swatch"+(e.color===c?" sel":"")} style={{background:c}} onClick={()=>updEquip(e.id,{color:c})}/>))}
         </div>
         <div className="row3" style={{marginBottom:8}}>
-        <div className="row3" style={{marginBottom:8}}>
           <div><label>Pierwsza doba (pn-czw)</label><input type="number" defaultValue={e.rate_day} onBlur={ev=>updEquip(e.id,{rate_day:+ev.target.value||0})}/></div>
           <div><label>Pierwsza doba (weekend)</label><input type="number" defaultValue={e.rate_day_weekend} onBlur={ev=>updEquip(e.id,{rate_day_weekend:+ev.target.value||0})} placeholder="np. wyższa niż w tygodniu"/></div>
         </div>
