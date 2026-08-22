@@ -570,7 +570,7 @@ function Kalendarz({equipment,offers,clients,goOffer,initialYm,clearCalYm}){
   });
   const cells=[]; for(let i=0;i<startOffset;i++) cells.push(null);
   for(let d=1; d<=last.getDate(); d++) cells.push(d);
-  const monthOffers = offers.filter(o=>o.status!=="draft" && o.year===ym.y && o.month===ym.m);
+  const monthOffers = offers.filter(o=>o.status!=="draft" && o.year===ym.y && o.month===ym.m && !isExpiredCal(o));
   return (
     <div>
       <div className="topbar"><div><h1>Kalendarz</h1><p>Dostępność sprzętu</p></div></div>
@@ -1558,7 +1558,12 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
             <div><b>{eq?eq.name:"—"}{calc.extraEquip.length>0?` + ${calc.extraEquip.map(e=>e.name).join(" + ")}`:""}</b><div className="muted" style={{fontSize:12}}>{displayName(o.phone,(c&&c.name)||o.name)} · {dateRangeLabel(o)}</div></div>
             <span className={"badge "+(expired?"b-red":st[1])}>{expired?"Wygasła":st[0]}</span>
           </div>
-          <div style={{fontWeight:700,color:"var(--green-d)",marginTop:6}}>{fmt(showDeposit?calc.total:calc.total-calc.deposit)}</div>
+          <div style={{fontWeight:700,color:"var(--green-d)",marginTop:6,display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+            <span>{fmt(showDeposit?calc.total:calc.total-calc.deposit)}</span>
+            {o.invoice_required && (o.invoice_issued
+              ? <span style={{fontSize:11,fontWeight:600,color:"var(--green-d)",background:"#e8f0e9",padding:"2px 7px",borderRadius:10,border:"1px solid #b8d5bc"}}>📄 Faktura wystawiona</span>
+              : <span style={{fontSize:11,fontWeight:600,color:"#9a6b00",background:"#fdf0d9",padding:"2px 7px",borderRadius:10,border:"1px solid #e5c88a"}}>📄 Wymaga faktury</span>)}
+          </div>
           {o.status==="sent" && <div style={{fontSize:11,color:"#9a6b00",marginTop:3}}>⏳ {expired?"Oferta wygasła — odśwież warunki":`Ważna jeszcze ${hoursLeft} godz.`}</div>}
           <div style={{display:"flex",gap:6,marginTop:9,flexWrap:"wrap"}} onClick={e=>e.stopPropagation()}>
             <span className="chip" onClick={()=>openShare(o,"sms")}>💬 SMS</span>
@@ -2067,25 +2072,19 @@ function Raport({offers,equipment,settings,packages,clients,vouchers,costs,goCal
         const notInvoicedSum = revenueForOffers(notInvoicedList);
         const allTimeInvoicedList = realized.filter(o=>o.invoice_issued);
         const allTimeInvoicedSum = revenueForOffers(allTimeInvoicedList);
-        if(requiresInvoice.length===0 && allTimeInvoicedList.length===0) return null;
-        const periodName = period==="month" ? "miesiąc" : period==="quarter" ? "kwartał" : "rok";
         const periodLabelText = periodLabel(curKey);
         return (
         <div className="card" style={{marginBottom:16,padding:14,background:"#f0f7f1",border:"1px solid var(--green)"}}>
           <div style={{fontSize:12,fontWeight:700,color:"var(--green-d)",textTransform:"uppercase",letterSpacing:.4,marginBottom:4}}>📄 Faktury (tylko gdzie klient wymaga)</div>
           <div style={{fontSize:11,color:"var(--muted)",marginBottom:10}}>Okres: <b>{periodLabelText}</b> · zmień powyżej: Miesiąc / Kwartał / Rok</div>
-          {requiresInvoice.length===0 ? (
-            <div style={{fontSize:12.5,color:"var(--muted)",marginBottom:6}}>W tym okresie żaden klient nie wymagał faktury.</div>
-          ) : (<>
-            <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:5}}>
-              <span>✅ Wystawione ({invoicedList.length} z {requiresInvoice.length})</span>
-              <span style={{fontWeight:700,color:"var(--green-d)"}}>{fmt(invoicedSum)}</span>
-            </div>
-            <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:5}}>
-              <span style={{color:notInvoicedList.length>0?"#9a6b00":"var(--muted)"}}>⏳ Do wystawienia — {notInvoicedList.length}</span>
-              <span style={{fontWeight:600,color:notInvoicedList.length>0?"#9a6b00":"var(--muted)"}}>{fmt(notInvoicedSum)}</span>
-            </div>
-          </>)}
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:5}}>
+            <span>✅ Wystawione ({invoicedList.length} z {requiresInvoice.length})</span>
+            <span style={{fontWeight:700,color:invoicedList.length>0?"var(--green-d)":"var(--muted)"}}>{fmt(invoicedSum)}</span>
+          </div>
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:5}}>
+            <span style={{color:notInvoicedList.length>0?"#9a6b00":"var(--muted)"}}>⏳ Do wystawienia — {notInvoicedList.length}</span>
+            <span style={{fontWeight:600,color:notInvoicedList.length>0?"#9a6b00":"var(--muted)"}}>{fmt(notInvoicedSum)}</span>
+          </div>
           <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"var(--muted)",paddingTop:8,borderTop:"1px dashed #cfe0d1",marginTop:6}}>
             <span>Łącznie wystawione od początku ({allTimeInvoicedList.length} szt.)</span>
             <span style={{fontWeight:600}}>{fmt(allTimeInvoicedSum)}</span>
