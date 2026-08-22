@@ -185,7 +185,48 @@ function dateRangeLabel(o){
   return `${start.getDate()}.${start.getMonth()+1} - ${end.getDate()}.${end.getMonth()+1}.${end.getFullYear()}`;
 }
 
+/* Tworzy migawkę cen sprzętu i ustawień dla oferty — zamrażaną w momencie zapisu.
+   Chroni ofertę przed przeliczeniem gdy zmienią się ceny w ustawieniach. */
+function buildRateSnapshot(offer, equipment, settings){
+  const ids = [offer.equipment_id, ...(offer.extra_equip_ids||[])].filter(Boolean);
+  const rates = {};
+  const priceFields = ['rate_day','rate_day_weekend','rate_extra_day','rate_extra_day_weekend','rate_weekend','rate_weekend3','rate_week','deposit'];
+  ids.forEach(id=>{
+    const e = equipment.find(x=>x.id===id);
+    if(e){
+      const snap = {};
+      priceFields.forEach(f=>{ if(e[f]!==undefined) snap[f]=e[f]; });
+      rates[id] = snap;
+    }
+  });
+  const s = settings || {};
+  return {
+    frozen_rates: rates,
+    frozen_settings: {
+      free_km: s.free_km, km_rate: s.km_rate, zadatek: s.zadatek,
+      referral_discount_type: s.referral_discount_type, referral_discount_value: s.referral_discount_value
+    }
+  };
+}
+
 function computeCalc(f, equipment, settings, packages, clients, vouchers){
+  // ZAMROŻONE CENY: jeśli oferta ma snapshot z chwili zapisu, używaj go zamiast bieżącego cennika.
+  // Dzięki temu zmiana cen w Ustawieniach NIGDY nie zmienia ofert już zapisanych — chroni kwotę,
+  // którą klient dostał. Ceny odświeżają się tylko przy manualnej edycji oferty.
+  if(f.frozen_rates && typeof f.frozen_rates === 'object'){
+    const frozenIds = Object.keys(f.frozen_rates);
+    if(frozenIds.length > 0){
+      const virtualEquipment = frozenIds.map(id => {
+        const bieżący = equipment.find(e=>e.id===id);
+        return { ...(bieżący||{}), ...f.frozen_rates[id], id };
+      });
+      // Sklej: zamrożone pierwsze, reszta z bieżącego (dla ewentualnych brakujących)
+      equipment = [...virtualEquipment, ...equipment.filter(e=>!frozenIds.includes(e.id))];
+    }
+  }
+  if(f.frozen_settings && typeof f.frozen_settings === 'object'){
+    settings = { ...settings, ...f.frozen_settings };
+  }
   const eq = equipment.find(e=>e.id===f.equipment_id) || equipment[0] || {};
   const startDow = new Date(f.year, f.month, f.day).getDay();
   const startIsWeekend = startDow===5 || startDow===6 || startDow===0;
@@ -502,7 +543,8 @@ function Kalendarz({equipment,offers,clients,goOffer,initialYm,clearCalYm}){
   const startOffset = (first.getDay()+6)%7;
   const [dayDetail,setDayDetail]=useState(null);
   const booked = {};
-  offers.filter(o=>o.status!=="done").forEach(o=>{
+  const isExpiredCal = o => o.status==="sent" && !o.zadatek_paid && o.expires_at && new Date(o.expires_at) < new Date();
+  offers.filter(o=>o.status!=="done" && !isExpiredCal(o)).forEach(o=>{
     const ids = [o.equipment_id,...(o.extra_equip_ids||[])];
     const eqs = ids.map(id=>equipment.find(e=>e.id===id)).filter(Boolean);
     const eq = eqs[0];
@@ -550,23 +592,28 @@ function Kalendarz({equipment,offers,clients,goOffer,initialYm,clearCalYm}){
             const radius = b ? (b.shape==='round'?'50%':isCyl?'50%/30%':'0px') : '8px';
             const pending = b && b.pending;
             const c0 = b ? b.colors[0] : null;
-            const bg = b ? (b.colors.length>1
+            // Dla pending: przymywamy kolor sprzętu białym, żeby dostać jasny wariant.
+            // Widać KOLOR (który sprzęt) + gradient (zestaw), a przerywana ramka mówi że to bez zadatku.
+            const colorBg = b ? (b.colors.length>1
               ? `linear-gradient(135deg, ${b.colors.map((c,ci)=>`${c} ${ci*100/b.colors.length}%, ${c} ${(ci+1)*100/b.colors.length}%`).join(', ')})`
-              : c0) : (isWeekend?"#f4ecdc":"#fff");
+              : c0) : null;
+            const bg = b ? (pending
+              ? `linear-gradient(rgba(255,255,255,.72), rgba(255,255,255,.72)), ${colorBg}`  /* jasny wariant koloru sprzętu */
+              : colorBg) : (isWeekend?"#f4ecdc":"#fff");
             return (<div key={i} className="calcell" onClick={()=>b&&setDayDetail({day:d,info:b})} style={{
               background:bg,
-              color:b?"#fff":"var(--ink)",
-              border:pending?`1.5px dashed ${c0}`:(isWeekend?"1.5px solid #d8c68a":"1px solid var(--line)"),
+              color:b?(pending?c0:"#fff"):"var(--ink)",
+              border:pending?`2px dashed ${c0}`:(isWeekend?"1.5px solid #d8c68a":"1px solid var(--line)"),
               borderRadius:radius,position:"relative",overflow:"hidden",cursor:b?"pointer":"default",
-              boxShadow:b&&(b.sets||b.multiClient||(b.offers||[]).length>1)?"inset 0 0 0 2px #fff":"none"
+              boxShadow:b&&(b.sets||b.multiClient||(b.offers||[]).length>1)?"inset 0 0 0 2px #fff":"none",
+              fontWeight:pending?700:400
             }}>
               {isCyl && !pending && <><span style={{position:"absolute",left:0,right:0,top:"28%",height:1,background:"rgba(255,255,255,.45)"}}/><span style={{position:"absolute",left:0,right:0,top:"68%",height:1,background:"rgba(255,255,255,.45)"}}/></>}
-              <span style={{position:"relative",zIndex:1,textShadow:b?"0 1px 2px rgba(0,0,0,.45)":"none"}}>{d}</span>
+              <span style={{position:"relative",zIndex:1,textShadow:b&&!pending?"0 1px 2px rgba(0,0,0,.45)":"none"}}>{d}</span>
               {b && b.gift && <span style={{position:"absolute",top:-2,right:-1,fontSize:9,zIndex:2}}>🎁</span>}
               {b && b.multiClient && <span style={{position:"absolute",bottom:0,left:2,fontSize:8,fontWeight:700,zIndex:2,lineHeight:1,textShadow:"0 1px 2px rgba(0,0,0,.5)"}}>👥</span>}
               {b && !b.multiClient && (b.offers||[]).length>1 && <span style={{position:"absolute",bottom:0,left:2,fontSize:8,fontWeight:700,zIndex:2,lineHeight:1,textShadow:"0 1px 2px rgba(0,0,0,.5)"}}>🗓</span>}
               {b && !b.multiClient && (b.offers||[]).length===1 && b.sets && <span style={{position:"absolute",bottom:0,left:2,fontSize:8,fontWeight:700,zIndex:2,lineHeight:1,textShadow:"0 1px 2px rgba(0,0,0,.5)"}}>🔗</span>}
-              {b && b.anyInvoice && <span title="Faktura wystawiona" style={{position:"absolute",bottom:0,right:2,fontSize:8,fontWeight:700,zIndex:2,lineHeight:1,textShadow:"0 1px 2px rgba(0,0,0,.5)"}}>📄</span>}
             </div>);
           })}
         </div>
@@ -579,7 +626,6 @@ function Kalendarz({equipment,offers,clients,goOffer,initialYm,clearCalYm}){
           <span><span style={{display:"inline-block",width:12,height:9,background:"linear-gradient(135deg,#153826 0%,#153826 50%,#c9a227 50%,#c9a227 100%)",boxShadow:"inset 0 0 0 1.5px #fff",marginRight:5}}/>🔗 Zestaw (1 klient, 2+ sprzęty)</span>
           <span>🗓 Kilka osobnych wynajmów 1 klienta</span>
           <span>👥 Różni klienci w tym dniu</span>
-          <span>📄 Faktura wystawiona</span>
           <span>🎁 Realizacja vouchera</span>
         </div>
         <h3 style={{fontSize:12,color:"var(--muted)",textTransform:"uppercase",marginBottom:8}}>Rezerwacje w tym miesiącu</h3>
@@ -600,7 +646,6 @@ function Kalendarz({equipment,offers,clients,goOffer,initialYm,clearCalYm}){
             </div>
             <p className="muted" style={{fontSize:12,marginBottom:12}}>
               {dOffers.length===1 ? (info.sets?"🔗 Zestaw — 1 klient, kilka sprzętów":"1 wynajem") : (info.multiClient ? `👥 ${dOffers.length} wynajmy — różni klienci` : `🗓 ${dOffers.length} osobne wynajmy — ten sam klient`)}
-              {info.anyInvoice && " · 📄 Faktura wystawiona"}
             </p>
             {dOffers.map(o=>{ const c=clients.find(x=>x.phone===o.phone);
               const eqs=[o.equipment_id,...(o.extra_equip_ids||[])].map(id=>equipment.find(e=>e.id===id)).filter(Boolean);
@@ -620,7 +665,6 @@ function Kalendarz({equipment,offers,clients,goOffer,initialYm,clearCalYm}){
                   <div style={{textAlign:"right",whiteSpace:"nowrap"}}>
                     <b style={{color:"var(--green-d)"}}>{fmt(calc.total-calc.deposit)}</b>
                     <div className="muted" style={{fontSize:11,marginTop:2}}>{st}</div>
-                    {o.invoice_issued && <div style={{fontSize:10.5,marginTop:2,color:"var(--green-d)",fontWeight:600}}>📄 Faktura</div>}
                   </div>
                 </div>
               </div>);
@@ -1239,6 +1283,22 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
   const [voucherTerm,setVoucherTerm]=useState(null);
   const [voucherSub,setVoucherSub]=useState("all");
 
+  // AUTO-MIGRACJA STARYCH OFERT: przy pierwszym uruchomieniu tej wersji zamrażamy ceny wszystkich
+  // istniejących ofert (tych bez frozen_rates), żeby zmiana cennika już ich nie ruszyła.
+  useEffect(()=>{
+    if(!equipment || equipment.length===0 || !offers || offers.length===0) return;
+    const toFreeze = offers.filter(o => !o.frozen_rates || Object.keys(o.frozen_rates||{}).length===0);
+    if(toFreeze.length===0) return;
+    // Zamrażaj po cichu, w tle - nie blokujemy UI
+    toFreeze.forEach(async o => {
+      try {
+        const snap = buildRateSnapshot(o, equipment, settings);
+        await sbUpdate("gs_offers","id",o.id,snap);
+        setOffers(p => p.map(x => x.id===o.id ? {...x, ...snap} : x));
+      } catch(_){}
+    });
+  }, [equipment.length, offers.length]);
+
   const isExpired = o => o.status==="sent" && !o.zadatek_paid && o.expires_at && new Date(o.expires_at) < new Date();
   const statusOrder = {sent:0,accepted:1,draft:2,done:3};
   const rows = offers.filter(o=>{
@@ -1298,6 +1358,9 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
         if(v && isVoucherUsable(v)){ await sbUpdate("gs_vouchers","id",v.id,{redeemed:true}); setVouchers(p=>p.map(x=>x.id===v.id?{...x,redeemed:true}:x)); }
       }
       const status = mode==="log_done" ? "done" : mode==="mark_accepted" ? "accepted" : mode==="draft_send" ? "sent" : "draft";
+      // ZAMROŻENIE CEN: robimy migawkę cen sprzętu i ustawień z tej chwili — chronimy ofertę
+      // przed zmianą po zmianie cennika w Ustawieniach. Klientka świadomie edytuje = ceny się aktualizują.
+      const snap = buildRateSnapshot(f, equipment, settings);
       const body = { phone:f.phone, name:f.name, equipment_id:f.equipment_id, mode:f.mode, qty:f.qty, km:f.km,
         addon_ids:f.addon_ids, extra_equip_ids:f.extra_equip_ids, custom_items:f.custom_items,
         use_tier: f.use_tier!==false, alt_options: f.alt_options||[], set_prices: f.set_prices||{},
@@ -1306,7 +1369,8 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
         discount_value_override: (f.discount_value_override===""||f.discount_value_override==null)?null:+f.discount_value_override,
         rate_override: f.rate_override===""?null:+f.rate_override, transport_override: f.transport_override===""?null:+f.transport_override,
         zadatek_override: f.zadatek_override===""?null:+f.zadatek_override, deposit_override: f.deposit_override===""?null:+f.deposit_override,
-        voucher_code:f.voucher_code, offer_cost:f.offer_cost, year:f.year, month:f.month, day:f.day, days:f.days||f.qty||1, delivery_address:f.delivery_address||"", deposit_returned:!!f.deposit_returned };
+        voucher_code:f.voucher_code, offer_cost:f.offer_cost, year:f.year, month:f.month, day:f.day, days:f.days||f.qty||1, delivery_address:f.delivery_address||"", deposit_returned:!!f.deposit_returned,
+        frozen_rates: snap.frozen_rates, frozen_settings: snap.frozen_settings };
       if(f.id){
         const newStatus = f.status||"draft";
         const patch = {...body,status:newStatus};
@@ -1329,7 +1393,7 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
       setOffers(p=>[newOffer,...p]);
       setModal(null);
       if(mode==="log_done") setView("done");
-      if(mode==="draft_send") openShare(newOffer,"wa");
+      if(mode==="draft_send") openShare(newOffer,"sms");
       flash("Zapisano ofertę.");
     }catch(ex){ setErr(String(ex.message||ex)); throw ex; }
   };
@@ -1479,8 +1543,8 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
           <div style={{fontWeight:700,color:"var(--green-d)",marginTop:6}}>{fmt(showDeposit?calc.total:calc.total-calc.deposit)}</div>
           {o.status==="sent" && <div style={{fontSize:11,color:"#9a6b00",marginTop:3}}>⏳ {expired?"Oferta wygasła — odśwież warunki":`Ważna jeszcze ${hoursLeft} godz.`}</div>}
           <div style={{display:"flex",gap:6,marginTop:9,flexWrap:"wrap"}} onClick={e=>e.stopPropagation()}>
-            <span className="chip" onClick={()=>openShare(o,"wa")}>🟢 WhatsApp</span>
             <span className="chip" onClick={()=>openShare(o,"sms")}>💬 SMS</span>
+            <span className="chip" onClick={()=>openShare(o,"wa")}>🟢 WhatsApp</span>
             <span className="chip" onClick={()=>openShare(o,"msg")}>📩 Messenger</span>
             {isInProgress(o) && <span className="chip on" style={{background:"#fdf0d9",color:"#9a6b00"}} onClick={()=>extendRental(o)}>➕ Przedłuż</span>}
             {st[2] && !expired && o.status!=="accepted" && <span className="chip on" onClick={()=>{ if(o.status==="draft") markSent(o); else advance(o); }}>▸ {st[2]}</span>}
@@ -1977,15 +2041,27 @@ function Raport({offers,equipment,settings,packages,clients,vouchers,costs,goCal
       </div>
       {(()=>{
         const curMonthOffers = (byPeriod[curKey]||[]);
-        const invoiced = curMonthOffers.filter(o=>o.invoice_issued).length;
-        const notInvoiced = curMonthOffers.length - invoiced;
-        const allTimeInvoiced = realized.filter(o=>o.invoice_issued).length;
+        const invoicedList = curMonthOffers.filter(o=>o.invoice_issued);
+        const notInvoicedList = curMonthOffers.filter(o=>!o.invoice_issued);
+        const invoicedSum = revenueForOffers(invoicedList);
+        const notInvoicedSum = revenueForOffers(notInvoicedList);
+        const allTimeInvoicedList = realized.filter(o=>o.invoice_issued);
+        const allTimeInvoicedSum = revenueForOffers(allTimeInvoicedList);
         return (
         <div className="card" style={{marginBottom:16,padding:14,background:"#f0f7f1",border:"1px solid var(--green)"}}>
-          <div style={{fontSize:12,fontWeight:700,color:"var(--green-d)",textTransform:"uppercase",letterSpacing:.4,marginBottom:8}}>📄 Faktury</div>
-          <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:4}}><span>Wystawione w tym miesiącu</span><span style={{fontWeight:600}}>{invoiced} z {curMonthOffers.length}</span></div>
-          <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:4}}><span>Do wystawienia (ten miesiąc)</span><span style={{fontWeight:600,color:notInvoiced>0?"#9a6b00":"var(--muted)"}}>{notInvoiced}</span></div>
-          <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"var(--muted)",paddingTop:6,borderTop:"1px dashed #cfe0d1",marginTop:6}}><span>Łącznie od początku</span><span>{allTimeInvoiced} z {realized.length}</span></div>
+          <div style={{fontSize:12,fontWeight:700,color:"var(--green-d)",textTransform:"uppercase",letterSpacing:.4,marginBottom:10}}>📄 Faktury</div>
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:5}}>
+            <span>Wystawione w tym miesiącu ({invoicedList.length} z {curMonthOffers.length})</span>
+            <span style={{fontWeight:700,color:"var(--green-d)"}}>{fmt(invoicedSum)}</span>
+          </div>
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:5}}>
+            <span style={{color:notInvoicedList.length>0?"#9a6b00":"var(--muted)"}}>Do wystawienia (ten miesiąc) — {notInvoicedList.length}</span>
+            <span style={{fontWeight:600,color:notInvoicedList.length>0?"#9a6b00":"var(--muted)"}}>{fmt(notInvoicedSum)}</span>
+          </div>
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"var(--muted)",paddingTop:8,borderTop:"1px dashed #cfe0d1",marginTop:6}}>
+            <span>Łącznie wystawione od początku ({allTimeInvoicedList.length} szt.)</span>
+            <span style={{fontWeight:600}}>{fmt(allTimeInvoicedSum)}</span>
+          </div>
         </div>);
       })()}
       <h3 style={{fontSize:12,color:"var(--muted)",textTransform:"uppercase",marginBottom:8}}>ROI — zwrot z inwestycji w sprzęt</h3>
