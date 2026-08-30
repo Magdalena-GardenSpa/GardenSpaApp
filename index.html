@@ -282,6 +282,32 @@ function computeExpiry(settings){
   return new Date(Date.now()+ms).toISOString();
 }
 
+/* GLOBALNA definicja wygaśnięcia oferty - używana wszędzie (Pulpit, Kalendarz, Oferty).
+   Oferta uznana za wygasłą (i ukrywana z aktywnych widoków) gdy:
+   - status = "sent" (wysłana)
+   - zadatek NIE wpłacony
+   - I DOWOLNE z poniższych:
+     a) expires_at (data ważności) minęła
+     b) brak expires_at, ale oferta utworzona ponad 7 dni temu (nikt się nie odzywa)
+     c) data początku wynajmu już minęła (klient przepuścił termin bez wpłaty) */
+function isOfferExpired(o){
+  if(o.status !== "sent" || o.zadatek_paid) return false;
+  const now = Date.now();
+  // a) klasyczne wygaśnięcie - minęła data ważności
+  if(o.expires_at && new Date(o.expires_at).getTime() < now) return true;
+  // b) brak expires_at, ale oferta stara (>7 dni od utworzenia)
+  if(!o.expires_at && o.created_at){
+    const created = new Date(o.created_at).getTime();
+    if(!isNaN(created) && (now - created) > 7*86400000) return true;
+  }
+  // c) minęła data początku wynajmu
+  if(typeof o.year==="number" && typeof o.month==="number" && typeof o.day==="number"){
+    const startDate = new Date(o.year, o.month, o.day).getTime();
+    if(startDate < now) return true;
+  }
+  return false;
+}
+
 function dobaForm(n){ const t=n%10, h=n%100; if(n===1) return 'doba'; if(t>=2&&t<=4&&!(h>=12&&h<=14)) return 'doby'; return 'dób'; }
 
 function tierLabel(tiers, mode, qty){
@@ -468,7 +494,7 @@ function Pulpit({equipment,offers,clients,settings,setTab,vouchers,goOffer}){
   const tNum = today.getFullYear()*10000+today.getMonth()*100+today.getDate();
   const dateNum = o => o.year*10000+o.month*100+o.day;
   const endNum = o => { const d=new Date(o.year,o.month,o.day+((o.days||1))); return d.getFullYear()*10000+d.getMonth()*100+d.getDate(); };
-  const live = offers.filter(o=>o.status!=="draft" && o.status!=="done");
+  const live = offers.filter(o=>o.status!=="draft" && o.status!=="done" && !isOfferExpired(o));
   const deliveriesToday = live.filter(o=>dateNum(o)===tNum);
   const pickupsToday = live.filter(o=>endNum(o)===tNum && dateNum(o)!==tNum);
   const inProgress = live.filter(o=>dateNum(o)<=tNum && endNum(o)>=tNum);
@@ -543,8 +569,7 @@ function Kalendarz({equipment,offers,clients,goOffer,initialYm,clearCalYm}){
   const startOffset = (first.getDay()+6)%7;
   const [dayDetail,setDayDetail]=useState(null);
   const booked = {};
-  const isExpiredCal = o => o.status==="sent" && !o.zadatek_paid && o.expires_at && new Date(o.expires_at) < new Date();
-  offers.filter(o=>!isExpiredCal(o)).forEach(o=>{
+  offers.filter(o=>!isOfferExpired(o)).forEach(o=>{
     const ids = [o.equipment_id,...(o.extra_equip_ids||[])];
     const eqs = ids.map(id=>equipment.find(e=>e.id===id)).filter(Boolean);
     const eq = eqs[0];
@@ -570,7 +595,7 @@ function Kalendarz({equipment,offers,clients,goOffer,initialYm,clearCalYm}){
   });
   const cells=[]; for(let i=0;i<startOffset;i++) cells.push(null);
   for(let d=1; d<=last.getDate(); d++) cells.push(d);
-  const monthOffers = offers.filter(o=>o.status!=="draft" && o.year===ym.y && o.month===ym.m && !isExpiredCal(o));
+  const monthOffers = offers.filter(o=>o.status!=="draft" && o.year===ym.y && o.month===ym.m && !isOfferExpired(o));
   return (
     <div>
       <div className="topbar"><div><h1>Kalendarz</h1><p>Dostępność sprzętu</p></div></div>
@@ -1300,7 +1325,7 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
     });
   }, [equipment.length, offers.length]);
 
-  const isExpired = o => o.status==="sent" && !o.zadatek_paid && o.expires_at && new Date(o.expires_at) < new Date();
+  const isExpired = isOfferExpired;
   const statusOrder = {sent:0,accepted:1,draft:2,done:3};
   const rows = offers.filter(o=>{
     if(view==="vouchers") return false;
