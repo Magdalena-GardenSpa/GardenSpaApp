@@ -1486,9 +1486,19 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
     catch(ex){ setErr(String(ex.message||ex)); }
   };
   const toggleZadatek = async (o) => {
-    try{ await sbUpdate("gs_offers","id",o.id,{zadatek_paid:!o.zadatek_paid}); setOffers(p=>p.map(x=>x.id===o.id?{...x,zadatek_paid:!x.zadatek_paid}:x));
-      setModal(m=>m && m.id===o.id ? {...m,zadatek_paid:!m.zadatek_paid} : m); }
-    catch(ex){ setErr(String(ex.message||ex)); }
+    try{
+      const nv = !o.zadatek_paid;
+      const patch = {zadatek_paid: nv};
+      // Zaznaczasz zadatek jako wpłacony na ofercie roboczej/wysłanej = klient zaakceptował
+      // → automatycznie zmień status na "Zaakceptowana"
+      if(nv && (o.status==="draft" || o.status==="sent")){
+        patch.status = "accepted";
+      }
+      await sbUpdate("gs_offers","id",o.id,patch);
+      setOffers(p=>p.map(x=>x.id===o.id?{...x,...patch}:x));
+      setModal(m=>m && m.id===o.id ? {...m,...patch} : m);
+      if(patch.status==="accepted") flash("✅ Zadatek wpłacony · status: Zaakceptowana");
+    }catch(ex){ setErr(String(ex.message||ex)); }
   };
   const toggleInvoice = async (o) => {
     try{
