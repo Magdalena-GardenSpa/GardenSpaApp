@@ -512,7 +512,10 @@ function Pulpit({equipment,offers,clients,settings,setTab,vouchers,goOffer}){
   ];
   if(!alerts.length) alerts.push({icon:"✓", text:"Brak dzisiejszych dostaw/odbiorów."});
   const todayNum = tNum;
-  const upcoming = live.filter(o=>dateNum(o)>todayNum).sort((a,b)=>dateNum(a)-dateNum(b)).slice(0,4);
+  // Wszystkie zaakceptowane (zabezpieczone terminy = pewny plan pracy) - BEZ ograniczenia
+  const upcomingAccepted = live.filter(o=>dateNum(o)>todayNum && o.status==="accepted").sort((a,b)=>dateNum(a)-dateNum(b));
+  // Wysłane bez zadatku (mniej pewne, jeszcze nie zabezpieczone) - też wszystkie
+  const upcomingSent = live.filter(o=>dateNum(o)>todayNum && o.status==="sent").sort((a,b)=>dateNum(a)-dateNum(b));
   return (
     <div>
       <div className="topbar"><div><h1>Pulpit</h1><p>Wynajem balii i sauny</p></div></div>
@@ -543,11 +546,17 @@ function Pulpit({equipment,offers,clients,settings,setTab,vouchers,goOffer}){
       </div>
       <h3 style={{fontSize:12.5,color:"var(--muted)",textTransform:"uppercase",letterSpacing:.5,marginBottom:8}}>Wymaga uwagi</h3>
       {alerts.map((a,i)=>(<div key={i} className="card" style={{display:"flex",gap:10,alignItems:"center",marginBottom:8,padding:"10px 14px",cursor:a.o?"pointer":"default"}} onClick={()=>a.o&&goOffer(a.o)}><span>{a.icon}</span><span>{a.text}</span></div>))}
-      <h3 style={{fontSize:12.5,color:"var(--muted)",textTransform:"uppercase",letterSpacing:.5,margin:"18px 0 8px"}}>Nadchodzące</h3>
-      {upcoming.length===0 && <div className="empty">Brak nadchodzących zleceń.</div>}
-      {upcoming.map(o=>(
+      <h3 style={{fontSize:12.5,color:"var(--muted)",textTransform:"uppercase",letterSpacing:.5,margin:"18px 0 8px"}}>✅ Nadchodzące — zaakceptowane ({upcomingAccepted.length})</h3>
+      {upcomingAccepted.length===0 && <div className="empty">Brak zaakceptowanych zleceń.</div>}
+      {upcomingAccepted.map(o=>(
         <div key={o.id} className="card" style={{display:"flex",justifyContent:"space-between",marginBottom:8,padding:"10px 14px",cursor:"pointer"}} onClick={()=>goOffer(o)}>
           <span>{eqLabel(o)} · {nameOf(o)}</span><span className="muted">{o.day}.{o.month+1}</span></div>))}
+      {upcomingSent.length>0 && <>
+        <h3 style={{fontSize:12.5,color:"#9a6b00",textTransform:"uppercase",letterSpacing:.5,margin:"18px 0 8px"}}>⏳ Wysłane — oczekują zadatku ({upcomingSent.length})</h3>
+        {upcomingSent.map(o=>(
+          <div key={o.id} className="card" style={{display:"flex",justifyContent:"space-between",marginBottom:8,padding:"10px 14px",cursor:"pointer",background:"#fdf7ea",border:"1px dashed #e5c88a"}} onClick={()=>goOffer(o)}>
+            <span>{eqLabel(o)} · {nameOf(o)}</span><span style={{color:"#9a6b00",fontWeight:600}}>{o.day}.{o.month+1}</span></div>))}
+      </>}
       {(vouchers||[]).filter(v=>isVoucherUsable(v)).length>0 && <>
         <h3 style={{fontSize:12.5,color:"var(--muted)",textTransform:"uppercase",letterSpacing:.5,margin:"18px 0 8px"}}>🎁 Aktywne vouchery</h3>
         {vouchers.filter(v=>isVoucherUsable(v)).map(v=>{ const buyer=clients.find(c=>c.phone===v.buyer_phone); const st=voucherStatus(v);
@@ -2522,17 +2531,4 @@ insert into gs_packages (name,price,note) values
 ('Światełka klimatyczne',0,'girlanda na wieczór');
 
 insert into gs_tiers (mode,emoji,title,subtitle,perks,show_upsell,upsell_text) values
-('day','🌙','Wieczór we dwoje','1 doba — idealny prezent na "tylko dla nas"','🎁 W prezencie: pierwszy worek drewna na rozpalenie + światełka na wyjątkowy klimat',true,'⏰ Zostań o dobę dłużej — dopłata mniejsza niż myślisz, a chwila relaksu dwa razy dłuższa.'),
-('weekend','🔥','Pełny weekend chillu','2-3 doby — wybór 7 na 10 naszych klientów','🎁 Gratis: pierwszy worek drewna, dodatkowe drewno w cenie, światełka na klimat i dostęp do prądu',true,'💚 Najlepszy stosunek ceny do relaksu — terminy weekendowe znikają najszybciej.'),
-('week','🏡','Tydzień jak na wczasach','7 dni — najniższa cena za dobę','🎁 Gratis: pierwszy worek drewna + 2 dodatkowe w cenie, światełka na klimat i komplet ręczników',true,'👑 Najkorzystniejsza oferta w cenniku — codzienny relaks w cenie urlopu.');
-
-insert into gs_costs (name,amount,period) values
-('Ubezpieczenie sprzętu',150,'monthly'),
-('Paliwo i transport',350,'monthly'),
-('Konserwacja i akcesoria',200,'monthly'),
-('Marketing / social media',100,'monthly');
-
-============================================================
--->
-</body>
-</html>
+('day','🌙','Wieczór we dwoje','1 doba — idealny prezent na "tylko dla nas"','🎁 W prezencie: pierw
