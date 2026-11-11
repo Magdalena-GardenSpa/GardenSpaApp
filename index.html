@@ -246,8 +246,10 @@ function computeCalc(f, equipment, settings, packages, clients, vouchers){
   let rentalBase, extraRental;
   if(f.rate_override!=null && +f.rate_override>0){ rentalBase = +f.rate_override; extraRental = 0; }
   else { rentalBase = daysRental(eq); extraRental = extraEquip.reduce((s,e)=>s+daysRental(e),0); }
-  const freeKm = (+settings.free_km||0) * 4, kmRate = +settings.km_rate||0;
-  const kmTotal = (+f.km||0) * 4;
+  // Mnożnik transportu: przy zestawie każdy sprzęt = osobny kurs (balia + sauna = 2× transport, 3 sprzęty = 3× transport)
+  const equipCount = 1 + extraEquip.length;
+  const freeKm = (+settings.free_km||0) * 4 * equipCount, kmRate = +settings.km_rate||0;
+  const kmTotal = (+f.km||0) * 4 * equipCount;
   const billKm = Math.max(0, kmTotal - freeKm);
   const transport = (f.transport_override!=null && +f.transport_override>0) ? +f.transport_override : billKm*kmRate;
   const addonsSum = (f.addon_ids||[]).reduce((s,id)=>{ const p=packages.find(x=>x.id===id); return s+(p?+p.price||0:0); },0);
@@ -271,7 +273,7 @@ function computeCalc(f, equipment, settings, packages, clients, vouchers){
   const voucherAmt = voucherUsable ? Math.min(+voucher.value||0, rentalAfterReferral+transport+addonsSum+customSum) : 0;
   const total = preVoucherTotal - voucherAmt;
   const offerCost = +f.offer_cost||0;
-  return { rental: rentalAfterReferral, extraEquip, discountAmt, discountPct, discountType, discExpired, applyDiscount, clientDiscValue, transport, addonsSum, customSum, deposit, zadatek: zad, total, billKm, kmTotal, voucher, voucherUsable, voucherAmt, offerCost, eq };
+  return { rental: rentalAfterReferral, extraEquip, equipCount, discountAmt, discountPct, discountType, discExpired, applyDiscount, clientDiscValue, transport, addonsSum, customSum, deposit, zadatek: zad, total, billKm, kmTotal, voucher, voucherUsable, voucherAmt, offerCost, eq };
 }
 
 function computeExpiry(settings){
@@ -348,7 +350,7 @@ function offerMsg(o, name, settings, equipment, packages, tiers, clients, vouche
   const useTier = o.use_tier !== false;
   const tierData = useTier ? ((tiers||[]).find(t=>t.mode===o.mode) || {}) : {};
   const tier = tierLabel(tiers, o.mode, +(o.days ?? o.qty) || 1);
-  let extras = useTier ? (tierData.perks || 'W prezencie od nas: pierwszy worek drewna na rozpalenie 🔥 i światełka na klimat ✨') : '';
+  let extras = useTier ? (tierData.perks || '🔥 Pierwszy worek drewna w prezencie · ✨ Światełka na magiczny wieczór (pożyczamy)') : '';
   const norm = s => String(s||'').toLowerCase().replace(/[^a-ząćęłńóśźż ]+/g,' ');
   const extrasNorm = norm(extras);
   addonNames = addonNames.filter(n=>{
@@ -370,7 +372,8 @@ function offerMsg(o, name, settings, equipment, packages, tiers, clients, vouche
   const altBlock = altLines.length ? `\n\nInne opcje do wyboru:\n${altLines.join('\n')}` : '';
   if(nudge) nudge = '\n' + nudge.trimStart();
   const nights = +(o.days ?? o.qty) || 1;
-  const headLine = (useTier ? `${eq.name}${setLine} — ${tier}` : `${eq.name}${setLine} — ${nights} ${dobaForm(nights)}`).replace(/\s+/g,' ').replace(/\s+—/,' —');
+  const eqName = eq.name || '[wybierz sprzęt]';
+  const headLine = (useTier ? `${eqName}${setLine} — ${tier}` : `${eqName}${setLine} — ${nights} ${dobaForm(nights)}`).replace(/\s+/g,' ').replace(/\s+—/,' —');
   const extrasLine = extras ? `\n${extras}.` : '';
   const zadShown = Math.min(calc.zadatek, payableNow);
   const zadClause = zadShown>0 ? (zadShown<payableNow ? ` (w tym zadatek ${fmt(zadShown)} przy rezerwacji)` : ` — płatne przy rezerwacji`) : '';
@@ -727,6 +730,19 @@ function Klienci({clients,setClients,offers,equipment,settings,packages,tiers,vo
     try{ await sbUpdate("gs_clients","id",sel.id,patch); setClients(p=>p.map(c=>c.id===sel.id?{...c,...patch}:c)); }
     catch(ex){ setErr(String(ex.message||ex)); }
   };
+  const delClient = async (client)=>{
+    const clientOffers = offers.filter(o=>o.phone===client.phone);
+    const msg = clientOffers.length>0
+      ? `Usunąć klienta "${client.name||client.phone}"?\n\n⚠️ Uwaga: klient ma ${clientOffers.length} ${clientOffers.length===1?"ofertę":clientOffers.length<5?"oferty":"ofert"} w historii. Oferty NIE zostaną usunięte, ale stracą powiązanie z imieniem (pokażą sam numer telefonu).\n\nTej operacji nie można cofnąć.`
+      : `Usunąć klienta "${client.name||client.phone}"?\n\nTej operacji nie można cofnąć.`;
+    if(!confirm(msg)) return;
+    try{
+      await sbDelete("gs_clients", client.id);
+      setClients(p=>p.filter(c=>c.id!==client.id));
+      if(selPhone===client.phone) setSelPhone(null);
+      flash(`Usunięto klienta "${client.name||client.phone}".`);
+    }catch(ex){ setErr(String(ex.message||ex)); }
+  };
   const history = sel ? offers.filter(o=>o.phone===sel.phone) : [];
 
   if(sel){
@@ -807,18 +823,48 @@ function Klienci({clients,setClients,offers,equipment,settings,packages,tiers,vo
   return (
     <div>
       <div className="topbar"><div><h1>Klienci</h1><p>Szukaj po numerze telefonu</p></div></div>
-      <div className="field"><input placeholder="np. 600 111 222" value={search} onChange={e=>setSearch(e.target.value)}/></div>
+      <div className="field"><input placeholder="wpisz numer telefonu" value={search} onChange={e=>setSearch(e.target.value)}/></div>
       {filtered.length>0 && !broadcast && (
         <div style={{marginBottom:10}}>
           <button className="btn ghost sm" onClick={()=>setBroadcast({text:"",step:"compose"})}>📣 Nowa wiadomość / promocja</button>
         </div>
       )}
-      {filtered.map(c=>(<div key={c.id} className="card" style={{display:"flex",alignItems:"center",marginBottom:8,gap:10}}>
-        <div style={{flex:1,minWidth:0,cursor:"pointer"}} onClick={()=>setSelPhone(c.phone)}>
-          <b>{displayName(c.phone,c.name)}</b><div className="muted" style={{fontSize:12}}>{c.phone}</div>
-        </div>
-        <span className="muted" style={{fontSize:12,whiteSpace:"nowrap",cursor:"pointer"}} onClick={()=>setSelPhone(c.phone)}>{offers.filter(o=>o.phone===c.phone).length} zlec.</span>
-      </div>))}
+      {filtered.map(c=>{
+        const clientOffers = offers.filter(o=>o.phone===c.phone);
+        // Unikalne sprzęty z wszystkich rezerwacji klienta (aktualnych i historycznych)
+        const eqIds = new Set();
+        clientOffers.forEach(o=>{
+          if(o.equipment_id) eqIds.add(o.equipment_id);
+          (o.extra_equip_ids||[]).forEach(id=>eqIds.add(id));
+        });
+        const clientEquips = [...eqIds].map(id=>equipment.find(e=>e.id===id)).filter(Boolean);
+        // Emoji dla typu sprzętu: balia okrągła=🛁, balia kwadratowa=🟫, sauna=🔥
+        const equipEmoji = e => {
+          const n = (e.name||"").toLowerCase();
+          const t = (e.type||"").toLowerCase();
+          if(t==="sauna" || n.includes("sauna")) return "🔥";
+          if(e.shape==="round" || n.includes("okrągła") || n.includes("okragla")) return "🛁";
+          if(e.shape==="square" || n.includes("kwadrat")) return "🟫";
+          return "🛁";
+        };
+        const city = cityOnly(c.city);
+        return (<div key={c.id} className="card" style={{display:"flex",alignItems:"center",marginBottom:8,gap:10}}>
+          <div style={{flex:1,minWidth:0,cursor:"pointer"}} onClick={()=>setSelPhone(c.phone)}>
+            <b>{c.name||(c.client_type==="company"?"Firma":"(brak imienia)")}</b>
+            {city && <div className="muted" style={{fontSize:12,marginTop:2}}>📍 {city}</div>}
+            {clientEquips.length>0 && <div style={{display:"flex",gap:6,marginTop:4,flexWrap:"wrap",alignItems:"center",fontSize:16}}>
+              {clientEquips.map(e=>(
+                <span key={e.id} title={e.name}>{equipEmoji(e)}</span>
+              ))}
+            </div>}
+          </div>
+          <span className="muted" style={{fontSize:12,whiteSpace:"nowrap",cursor:"pointer"}} onClick={()=>setSelPhone(c.phone)}>{clientOffers.length} zlec.</span>
+          <div style={{display:"flex",gap:4,flexDirection:"column"}}>
+            <button title="Edytuj klienta" onClick={(e)=>{e.stopPropagation();setSelPhone(c.phone);}} style={{background:"var(--green-l)",border:"1px solid var(--line)",borderRadius:6,padding:"4px 8px",cursor:"pointer",fontSize:14}}>✏️</button>
+            <button title="Usuń klienta" onClick={(e)=>{e.stopPropagation();delClient(c);}} style={{background:"#fbeaea",border:"1px solid #e3b3ab",borderRadius:6,padding:"4px 8px",cursor:"pointer",fontSize:14}}>🗑</button>
+          </div>
+        </div>);
+      })}
       {showAddNew && <button className="btn primary" onClick={addClient}>+ Dodaj nowy numer {search}</button>}
       {!filtered.length && !showAddNew && <div className="empty">Wpisz numer, aby wyszukać lub dodać klienta.</div>}
       {broadcast && <BroadcastModal clients={clients} filtered={filtered} onClose={()=>{setBroadcast(null);setSelecting(false);setChecked({});}}/>}
@@ -1075,18 +1121,6 @@ function OfferFormModal({onClose, initial, equipment, packages, tiers, clients, 
         <label style={{cursor:"pointer",display:"block",marginBottom:8}} onClick={()=>set("use_tier", f.use_tier===false)}>{f.use_tier===false?"☐":"☑"} Dołącz opis wariantu do oferty (tytuł, gratisy, zachęta)</label>
         {f.use_tier!==false && (()=>{ const activeTier = tiers.find(t=>t.mode===f.mode); return activeTier && activeTier.show_upsell && activeTier.upsell_text ?
           <div className="banner ok" style={{fontSize:12}}>💡 {activeTier.upsell_text}</div> : null; })()}
-        <label style={{marginTop:6}}>Dodatkowe opcje w ofercie (klient wybiera)</label>
-        <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>
-          {[{mode:'day',qty:1,l:'1 doba'},{mode:'day',qty:2,l:'2 doby'},{mode:'day',qty:3,l:'3 doby'},{mode:'weekend',qty:2,l:'Weekend 2 doby'},{mode:'weekend',qty:3,l:'Weekend 3 doby'},{mode:'week',qty:7,l:'Tydzień'}].map(op=>{
-            const list = f.alt_options||[];
-            const on = list.some(a=>a.mode===op.mode && (a.qty||1)===op.qty);
-            const isCurrent = f.mode===op.mode && (+(f.days??f.qty)||1)===op.qty;
-            return <button key={op.mode+op.qty} type="button" className={"btn sm "+(on?"primary":"ghost")} disabled={isCurrent}
-              style={isCurrent?{opacity:.45}:null}
-              onClick={()=>set("alt_options", on ? list.filter(a=>!(a.mode===op.mode && (a.qty||1)===op.qty)) : [...list,{mode:op.mode,qty:op.qty}])}>
-              {op.l}{isCurrent?" (główna)":""}</button>;
-          })}
-        </div>
         <div className="row3">
           <div className="field"><label>Data od</label><input type="date" value={`${f.year}-${String(f.month+1).padStart(2,'0')}-${String(f.day).padStart(2,'0')}`} onChange={e=>{ const [y,m,d]=e.target.value.split('-').map(Number); const start=new Date(y,m-1,d); const end=new Date(f.year,f.month,f.day+(+(f.days??f.qty)||1)); const days=Math.max(1,Math.round((end-start)/86400000)); const sd=start.getDay(),ed=end.getDay(); const isWknd = sd===5 && (ed===6||ed===0||ed===1) && days>=2 && days<=3; const newMode = (f.mode==='hour'||f.mode==='week') ? f.mode : (isWknd ? 'weekend' : 'day'); setF(p=>({...p,year:y,month:m-1,day:d,days,qty:days,mode:newMode})); }}/></div>
           <div className="field"><label>Data do</label><input type="date" value={(()=>{const e2=new Date(f.year,f.month,f.day+(+(f.days??f.qty)||1)); return `${e2.getFullYear()}-${String(e2.getMonth()+1).padStart(2,'0')}-${String(e2.getDate()).padStart(2,'0')}`;})()} onChange={e=>{ const [y,m,d]=e.target.value.split('-').map(Number); const end=new Date(y,m-1,d), start=new Date(f.year,f.month,f.day); const days=Math.max(1,Math.round((end-start)/86400000)); const sd=start.getDay(),ed=end.getDay(); const isWknd = sd===5 && (ed===6||ed===0||ed===1) && days>=2 && days<=3; const newMode = (f.mode==='hour'||f.mode==='week') ? f.mode : (isWknd ? 'weekend' : 'day'); setF(p=>({...p,days,qty:days,mode:newMode})); }}/></div>
@@ -1160,7 +1194,7 @@ function OfferFormModal({onClose, initial, equipment, packages, tiers, clients, 
           </div>}
           <div className="calc-line"><span>Wynajem<div className="muted" style={{fontSize:10.5,fontWeight:400,lineHeight:1.35}}>{(()=>{if(f.rate_override!=null && +f.rate_override>0) return 'kwota wpisana ręcznie'; const q=+(f.days??f.qty)||1; if(f.mode!=='day') return f.mode==='weekend'?(q>=3?'Weekend — 3 doby':'Weekend — 2 doby'):'Tydzień'; if(q<=1) return `Pierwsza doba ${fmt(rate('day'))}`; let wk=0,pn=0; for(let i=1;i<q;i++){const d=new Date(f.year,f.month,f.day+i).getDay(); if(d===5||d===6||d===0) wk++; else pn++;} const rw=+eqSel.rate_extra_day_weekend||+eqSel.rate_extra_day||0, rp=+eqSel.rate_extra_day||0; return `Pierwsza doba ${fmt(rate('day'))}` + (pn?` + ${pn} × kolejna pn-czw ${fmt(rp)}`:'') + (wk?` + ${wk} × kolejna weekend ${fmt(rw)}`:'');})()}</div></span><span>{fmt(calc.rental)}</span></div>
           {calc.discountAmt>0 && <div className="calc-line" style={{color:"#9a6b00"}}><span>Rabat polecenia</span><span>-{fmt(calc.discountAmt)}{calc.discountType==='percent'?` (${calc.discountPct}%)`:''}</span></div>}
-          <div className="calc-line"><span>Transport<div className="muted" style={{fontSize:10.5,fontWeight:400,lineHeight:1.35}}>{(f.transport_override!=null && +f.transport_override>0) ? 'kwota wpisana ręcznie' : <>{f.km||0} km w 1 stronę × 4 przejazdy = {calc.kmTotal} km<br/>{settings.free_km*4} km w cenie · {calc.billKm} km płatne × {settings.km_rate} zł/km</>}</div></span><span>{fmt(calc.transport)}</span></div>
+          <div className="calc-line"><span>Transport<div className="muted" style={{fontSize:10.5,fontWeight:400,lineHeight:1.35}}>{(f.transport_override!=null && +f.transport_override>0) ? 'kwota wpisana ręcznie' : <>{calc.equipCount>1 ? <>Zestaw {calc.equipCount} sprzętów = {calc.equipCount} osobnych kursów<br/></> : null}{f.km||0} km × 4 przejazdy{calc.equipCount>1?` × ${calc.equipCount} sprzęty`:""} = {calc.kmTotal} km<br/>{settings.free_km*4*calc.equipCount} km w cenie · {calc.billKm} km płatne × {settings.km_rate} zł/km</>}</div></span><span>{fmt(calc.transport)}</span></div>
           <div className="calc-line"><span>Dodatki</span><span>{fmt(calc.addonsSum)}</span></div>
           {calc.voucherAmt>0 && <div className="calc-line" style={{color:"#9a6b00"}}><span>Voucher podarunkowy</span><span>-{fmt(calc.voucherAmt)}</span></div>}
           {calc.customSum!==0 && <div className="calc-line"><span>Uzgodnienia własne</span><span>{fmt(calc.customSum)}</span></div>}
@@ -1310,6 +1344,7 @@ function OfferDetailModal({offer,onClose,equipment,packages,tiers,clients,settin
 function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,settings,vouchers,setVouchers,flash,setErr,focusOfferId,clearFocus}){
   const [modal,setModal]=useState(null); // 'new' or offer object for detail
   const [editingOffer,setEditingOffer]=useState(null);
+  const [sendModal,setSendModal]=useState(null); // {offer, kind, text, client} - modal edycji treści przed wysłaniem
   useEffect(()=>{ if(focusOfferId){ const o=offers.find(x=>x.id===focusOfferId); if(o){ setModal(o); clearFocus&&clearFocus(); } } },[focusOfferId]);
   const [view,setView]=useState("active"); // active | expired | done
   const [showDeposit,setShowDeposit]=useState(false);
@@ -1343,25 +1378,34 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
     return o.status!=="done" && !isExpired(o);
   }).slice().sort((a,b)=>(statusOrder[a.status]??9)-(statusOrder[b.status]??9));
 
+  // Otwiera modal edycji treści przed wysłaniem
   const openShare = (o, kind) => {
     const c = clients.find(c=>c.phone===o.phone);
-    const text = offerMsg(o,(c&&c.name)||o.name,settings,equipment,packages,tiers,clients,vouchers);
+    const baseText = offerMsg(o,(c&&c.name)||o.name,settings,equipment,packages,tiers,clients,vouchers);
+    // Dołącz opcjonalny dodatkowy tekst z ustawień
+    const extraTxt = (settings.offer_extra_text||"").trim();
+    const text = extraTxt ? baseText + "\n\n" + extraTxt : baseText;
+    setSendModal({offer:o, kind, text, client:c});
+  };
+
+  // Faktyczna wysyłka po edycji w modalu
+  const doSend = (o, kind, text) => {
+    const c = clients.find(c=>c.phone===o.phone);
     let url;
     if(kind==="wa") url = `https://wa.me/${waPhone(o.phone)}?text=${encodeURIComponent(text)}`;
     else if(kind==="sms") url = `sms:${o.phone.replace(/\s/g,"")}?body=${encodeURIComponent(text)}`;
     else {
-      // Messenger: użyj linku klienta jeśli podany; skopiuj treść do schowka (Messenger nie wspiera pre-fill)
       const link = c && c.messenger_link ? String(c.messenger_link).trim() : "";
       url = link ? (link.startsWith("http") ? link : link.startsWith("m.me/") ? "https://"+link : "https://m.me/"+link.replace(/^@/,"")) : "https://m.me/";
       if(navigator.clipboard){ navigator.clipboard.writeText(text).catch(()=>{}); flash && flash("📋 Treść skopiowana — wklej w czacie (Ctrl+V lub długie przytrzymanie)."); }
       if(!link && c){ flash && flash("💡 Wskazówka: dodaj Messenger klienta w karcie klienta, żeby otwierać jego czat od razu."); }
     }
-    // Zapisz kanał wysyłki i datę
     const via = kind==="wa" ? "whatsapp" : kind==="sms" ? "sms" : "messenger";
     sbUpdate("gs_offers","id",o.id,{sent_via:via, sent_at:new Date().toISOString()})
       .then(()=>{ setOffers(p=>p.map(x=>x.id===o.id?{...x,sent_via:via,sent_at:new Date().toISOString()}:x)); })
       .catch(()=>{});
     window.open(url,"_blank");
+    setSendModal(null);
   };
 
   const saveOffer = async (f, mode) => {
@@ -1593,7 +1637,7 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
       {view!=="vouchers" && rows.map(o=>{ const eq=equipment.find(e=>e.id===o.equipment_id); const c=clients.find(c=>c.phone===o.phone);
         const calc = computeCalc(o,equipment,settings,packages,clients,vouchers);
         const expired = isExpired(o);
-        const stMap={draft:["Robocza","b-grey","Wyślij"],sent:["Wysłana","b-blue","Akceptuj"],accepted:["Zaakceptowana","b-green","Zrealizowano"],done:["Zrealizowana","b-amber",null]};
+        const stMap={draft:["Robocza","b-grey","💬 Wyślij"],sent:["Wysłana","b-blue","💰 Zadatek wpłacony → Zaakceptuj"],accepted:["Zaakceptowana","b-green","✅ Zrealizowane"],done:["Zrealizowana","b-amber",null]};
         const base = stMap[o.status]||stMap.draft;
         const st = isInProgress(o) ? ["🔄 W trakcie najmu","b-blue",base[2]] : base;
         const hoursLeft = o.expires_at ? Math.max(0,Math.round((new Date(o.expires_at)-new Date())/3600000)) : null;
@@ -1614,8 +1658,9 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
             <span className="chip" onClick={()=>openShare(o,"wa")}>🟢 WhatsApp</span>
             <span className="chip" onClick={()=>openShare(o,"msg")}>📩 Messenger</span>
             {isInProgress(o) && <span className="chip on" style={{background:"#fdf0d9",color:"#9a6b00"}} onClick={()=>extendRental(o)}>➕ Przedłuż</span>}
-            {st[2] && !expired && o.status!=="accepted" && <span className="chip on" onClick={()=>{ if(o.status==="draft") markSent(o); else advance(o); }}>▸ {st[2]}</span>}
-            {o.status==="accepted" && !expired && !isInProgress(o) && hasEnded(o) && <span className="chip on" style={{background:"#eee",color:"#555",border:"1px dashed #999"}} onClick={()=>{ if(confirm(`Przenieść ofertę do archiwum jako zrealizowaną?\n\nKlient: ${(clients.find(c=>c.phone===o.phone)?.name)||o.name||o.phone}\nSprzęt: ${eq?eq.name:'—'}\nTermin: ${dateRangeLabel(o)}\n\nUwaga: po zarchiwizowaniu oferta zniknie z listy aktywnych.`)) advance(o); }}>📦 Archiwizuj</span>}
+            {o.status==="draft" && !expired && <span className="chip on" onClick={()=>markSent(o)}>▸ Oznacz jako wysłaną</span>}
+            {o.status==="sent" && !expired && <span className="chip on" style={{background:"#d1f0d3",color:"var(--green-d)",border:"1px solid var(--green)",fontWeight:700}} onClick={()=>advance(o)}>💰 Zadatek wpłacony → Zaakceptuj</span>}
+            {o.status==="accepted" && !expired && (hasEnded(o) || isInProgress(o)) && <span className="chip on" style={{background:"#fff4d4",color:"#9a6b00",border:"1px solid var(--gold)",fontWeight:700}} onClick={()=>{ if(confirm(`Oznaczyć wynajem jako zrealizowany (zakończony)?\n\nKlient: ${(clients.find(c=>c.phone===o.phone)?.name)||o.name||o.phone}\nSprzęt: ${eq?eq.name:'—'}\nTermin: ${dateRangeLabel(o)}\n\nOferta zostanie przeniesiona do archiwum.`)) advance(o); }}>✅ Zrealizowane — archiwizuj</span>}
             {o.status==="done" && <span className="chip" onClick={()=>restoreOffer(o)}>↩ Przywróć do aktywnych</span>}
             {expired && <span className="chip on" onClick={()=>refreshExpiry(o)} title="Klient się odezwał po terminie — przedłuż ważność oferty i wróć do aktywnych">↩ Przywróć jako aktywną</span>}
           </div>
@@ -1628,6 +1673,40 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
       {voucherEdit && <VoucherModal onClose={()=>setVoucherEdit(null)} initial={voucherEdit} settings={settings} clients={clients} equipment={equipment} offers={offers} setOffers={setOffers} setErr={setErr} flash={flash} setVouchers={setVouchers}/>}
       {voucherTerm && <VoucherTermModal voucher={voucherTerm} onClose={()=>setVoucherTerm(null)} equipment={equipment} clients={clients} settings={settings} setErr={setErr} flash={flash} setVouchers={setVouchers} setOffers={setOffers}/>}
       {extendModal && <ExtendModal offer={extendModal} onClose={()=>setExtendModal(null)} equipment={equipment} settings={settings} packages={packages} clients={clients} vouchers={vouchers} offers={offers} flash={flash} setErr={setErr} onSaved={(patch)=>{ setOffers(p=>p.map(x=>x.id===extendModal.id?{...x,...patch}:x)); setExtendModal(null); }}/>}
+      {sendModal && <SendMessageModal data={sendModal} onClose={()=>setSendModal(null)} onSend={doSend}/>}
+    </div>
+  );
+}
+
+function SendMessageModal({data, onClose, onSend}){
+  const {offer, kind, text:initialText, client} = data;
+  const [text, setText] = useState(initialText);
+  const channelLabel = kind==="wa" ? "WhatsApp" : kind==="sms" ? "SMS" : "Messenger";
+  const channelIcon = kind==="wa" ? "🟢" : kind==="sms" ? "💬" : "📩";
+  const channelColor = kind==="wa" ? "#1b5e20" : kind==="sms" ? "#3b6fd6" : "#0084ff";
+  const chars = text.length;
+  const smsCount = Math.ceil(chars/160);
+  return (
+    <div className="overlay" onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
+      <div className="modal">
+        <button className="close-x" onClick={onClose}>×</button>
+        <h2>{channelIcon} Wyślij ofertę — {channelLabel}</h2>
+        <div className="muted" style={{fontSize:13,marginBottom:10}}>
+          Do: <b>{client?.name||offer.name||offer.phone}</b> · {offer.phone}
+        </div>
+        <div className="field">
+          <label>Treść wiadomości (możesz edytować)</label>
+          <textarea rows="14" value={text} onChange={e=>setText(e.target.value)} style={{fontFamily:"-apple-system,sans-serif",fontSize:13,lineHeight:1.4}}/>
+          <div className="muted" style={{fontSize:11,marginTop:4,display:"flex",justifyContent:"space-between"}}>
+            <span>{chars} znaków {kind==="sms" && `· ok. ${smsCount} SMS-${smsCount===1?"a":"ów"}`}</span>
+            <span style={{cursor:"pointer",color:"var(--green-d)"}} onClick={()=>setText(initialText)}>↻ Przywróć oryginalną</span>
+          </div>
+        </div>
+        <div className="modal-actions">
+          <button className="btn ghost" onClick={onClose}>Anuluj</button>
+          <button className="btn primary" style={{background:channelColor}} onClick={()=>onSend(offer, kind, text)}>{channelIcon} Wyślij przez {channelLabel}</button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -2218,6 +2297,7 @@ function Ustawienia({settings,setSettings,equipment,setEquipment,packages,setPac
     ["packages","🎁","Pakiety / dodatki",`${packages.length} pozycji`,"marketing"],
     ["tiers","✨","Warianty ofertowe",`${tiers.length} warianty`,"marketing"],
     ["promo","🎟️","Kody promocyjne / polecenia","rabat, wiadomość, ważność","marketing"],
+    ["offer_tpl","✉️","Szablon oferty","dodatkowy tekst dołączany do SMS/WA","marketing"],
   ];
   const GROUPS = [["marketing","📣 Marketing i sprzedaż"],["base","⚙️ Ustawienia bazowe"]];
 
@@ -2373,6 +2453,20 @@ function Ustawienia({settings,setSettings,equipment,setEquipment,packages,setPac
       <div className="card row2">
         <div><label>Darmowe km (w 1 stronę)</label><input type="number" defaultValue={settings.free_km} onBlur={ev=>saveSettings({free_km:+ev.target.value||0})}/></div>
         <div><label>Zł / km powyżej</label><input type="number" defaultValue={settings.km_rate} onBlur={ev=>saveSettings({km_rate:+ev.target.value||0})}/></div>
+      </div>
+      </>)}
+
+      {mod==="offer_tpl" && (<>
+      <h3 style={{fontSize:12,color:"var(--muted)",textTransform:"uppercase",marginBottom:8}}>Szablon oferty</h3>
+      <div className="card">
+        <div className="field">
+          <label>Dodatkowy tekst dołączany do każdej oferty (opcjonalny)</label>
+          <div className="muted" style={{fontSize:11,marginBottom:6}}>Ten tekst dołączy się na końcu każdej wysyłanej oferty (SMS, WhatsApp, Messenger). Przykłady: info o wakacjach, promocja na dany miesiąc, prośba o wystawienie opinii. Puste = bez dodatków.</div>
+          <textarea rows="5" defaultValue={settings.offer_extra_text||""} onBlur={ev=>saveSettings({offer_extra_text:ev.target.value})} placeholder="np. 🌟 LISTOPAD -10%! Wpisz kod JESIEN26 w odpowiedzi — rabat działa do 30.11."/>
+        </div>
+        <div className="muted" style={{fontSize:11,padding:"8px 10px",background:"#f0f7f1",borderRadius:6,border:"1px solid #cfe0d1"}}>
+          💡 Przed każdą wysyłką możesz też dodatkowo zmienić treść wiadomości dla konkretnego klienta — po kliknięciu SMS/WhatsApp/Messenger wyskakuje okno z podglądem i możliwością edycji.
+        </div>
       </div>
       </>)}
 
