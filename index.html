@@ -400,6 +400,7 @@ function App(){
   const [tab,setTab]=useState("pulpit");
   const [nav,setNav]=useState({});
   const goOffer = (o)=>{ setNav({focusOfferId:o.id}); setTab("oferty"); };
+  const goNewOffer = (phone)=>{ setNav({prefillPhone:phone}); setTab("oferty"); };
   const goCalendar = (y,m)=>{ setNav({calYm:{y,m}}); setTab("kalendarz"); };
   const clearCalYm = ()=>setNav(n=>({...n,calYm:null}));
   const [err,setErr]=useState(null);
@@ -468,8 +469,8 @@ function App(){
           <>
             {tab==="pulpit" && <Pulpit {...{equipment,offers,clients,settings,setTab,vouchers,goOffer}}/>}
             {tab==="kalendarz" && <Kalendarz {...{equipment,offers,clients,goOffer,initialYm:nav.calYm,clearCalYm}}/>}
-            {tab==="klienci" && <Klienci {...{clients,setClients,offers,equipment,settings,packages,tiers,vouchers,setOffers,flash,setErr,reload,setTab}}/>}
-            {tab==="oferty" && <Oferty {...{offers,setOffers,equipment,packages,tiers,clients,setClients,settings,vouchers,setVouchers,flash,setErr,reload,focusOfferId:nav.focusOfferId,clearFocus:()=>setNav(n=>({...n,focusOfferId:null}))}}/>}
+            {tab==="klienci" && <Klienci {...{clients,setClients,offers,equipment,settings,packages,tiers,vouchers,setOffers,flash,setErr,reload,setTab,goNewOffer}}/>}
+            {tab==="oferty" && <Oferty {...{offers,setOffers,equipment,packages,tiers,clients,setClients,settings,vouchers,setVouchers,flash,setErr,reload,focusOfferId:nav.focusOfferId,clearFocus:()=>setNav(n=>({...n,focusOfferId:null})),prefillPhone:nav.prefillPhone,clearPrefill:()=>setNav(n=>({...n,prefillPhone:null}))}}/>}
             {tab==="opinie" && <Opinie {...{reviews,setReviews,clients,offers,equipment,packages,vouchers,flash,setErr}}/>}
             {tab==="raport" && <Raport {...{offers,equipment,settings,packages,clients,vouchers,costs,goCalendar}}/>}
             {tab==="ustawienia" && <Ustawienia {...{settings,setSettings,equipment,setEquipment,packages,setPackages,tiers,setTiers,costs,setCosts,flash,setErr,reload}}/>}
@@ -711,7 +712,7 @@ function Kalendarz({equipment,offers,clients,goOffer,initialYm,clearCalYm}){
 }
 
 /* ================= KLIENCI ================= */
-function Klienci({clients,setClients,offers,equipment,settings,packages,tiers,vouchers,setOffers,flash,setErr,reload,setTab}){
+function Klienci({clients,setClients,offers,equipment,settings,packages,tiers,vouchers,setOffers,flash,setErr,reload,setTab,goNewOffer}){
   const [search,setSearch]=useState("");
   const [selPhone,setSelPhone]=useState(null);
   const [checked,setChecked]=useState({});
@@ -803,7 +804,7 @@ function Klienci({clients,setClients,offers,equipment,settings,packages,tiers,vo
           </div>
           <div className="field"><label>Messenger (link m.me/... lub nazwa użytkownika)</label><input defaultValue={sel.messenger_link||""} onBlur={e=>updateClient({messenger_link:e.target.value})} placeholder="np. m.me/jan.kowalski albo jan.kowalski"/></div>
           <div style={{display:"flex",gap:8}}>
-            <button className="btn primary sm" onClick={()=>setTab("oferty")}>+ Nowa oferta</button>
+            <button className="btn primary sm" onClick={()=>goNewOffer(sel.phone)}>+ Nowa oferta dla tego klienta</button>
           </div>
         </div>
         <h3 style={{fontSize:12,color:"var(--muted)",textTransform:"uppercase",marginBottom:8}}>Historia</h3>
@@ -1341,11 +1342,20 @@ function OfferDetailModal({offer,onClose,equipment,packages,tiers,clients,settin
   );
 }
 
-function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,settings,vouchers,setVouchers,flash,setErr,focusOfferId,clearFocus}){
+function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,settings,vouchers,setVouchers,flash,setErr,focusOfferId,clearFocus,prefillPhone,clearPrefill}){
   const [modal,setModal]=useState(null); // 'new' or offer object for detail
   const [editingOffer,setEditingOffer]=useState(null);
   const [sendModal,setSendModal]=useState(null); // {offer, kind, text, client} - modal edycji treści przed wysłaniem
+  const [newOfferPhone,setNewOfferPhone]=useState(null); // telefon klienta do wypełnienia przy nowej ofercie
   useEffect(()=>{ if(focusOfferId){ const o=offers.find(x=>x.id===focusOfferId); if(o){ setModal(o); clearFocus&&clearFocus(); } } },[focusOfferId]);
+  // Otwórz nową ofertę z wypełnionym klientem (wywołane z karty klienta)
+  useEffect(()=>{
+    if(prefillPhone){
+      setNewOfferPhone(prefillPhone);
+      setModal("new");
+      if(clearPrefill) clearPrefill();
+    }
+  },[prefillPhone]);
   const [view,setView]=useState("active"); // active | expired | done
   const [showDeposit,setShowDeposit]=useState(false);
   const [voucherModal,setVoucherModal]=useState(false);
@@ -1667,7 +1677,7 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
           {o.sent_via && <div style={{fontSize:11,color:"#1b5e20",marginTop:6}}>✓ Wysłano przez: <b>{o.sent_via==="whatsapp"?"WhatsApp":o.sent_via==="sms"?"SMS":o.sent_via==="messenger"?"Messenger":o.sent_via}</b>{o.sent_at?" · "+new Date(o.sent_at).toLocaleDateString('pl-PL'):""}</div>}
         </div>); })}
 
-      {(modal==="new"||editingOffer) && <OfferFormModal offers={offers} onClose={()=>{setModal(null);setEditingOffer(null);}} initial={editingOffer?{...editingOffer,days:editingOffer.days??editingOffer.qty??1,qty:editingOffer.days??editingOffer.qty??1}:emptyForm(settings)} equipment={equipment} packages={packages} tiers={tiers} clients={clients} settings={settings} vouchers={vouchers} onSave={saveOffer}/>}
+      {(modal==="new"||editingOffer) && <OfferFormModal offers={offers} onClose={()=>{setModal(null);setEditingOffer(null);setNewOfferPhone(null);}} initial={editingOffer?{...editingOffer,days:editingOffer.days??editingOffer.qty??1,qty:editingOffer.days??editingOffer.qty??1}:(()=>{ const f=emptyForm(settings); if(newOfferPhone){ const cl=clients.find(c=>c.phone===newOfferPhone); f.phone=newOfferPhone; if(cl){ f.name=cl.name||""; f.delivery_address=cl.city||""; } } return f; })()} equipment={equipment} packages={packages} tiers={tiers} clients={clients} settings={settings} vouchers={vouchers} onSave={saveOffer}/>}
       {modal && modal!=="new" && <OfferDetailModal offer={modal} onClose={()=>setModal(null)} equipment={equipment} packages={packages} tiers={tiers} clients={clients} settings={settings} vouchers={vouchers} onToggleZadatek={toggleZadatek} onToggleInvoice={toggleInvoice} onEdit={()=>{setEditingOffer(modal);setModal(null);}} onDelete={()=>delOffer(modal)} onExtend={()=>{ const o=modal; setModal(null); setExtendModal(o); }}/>}
       {voucherModal && <VoucherModal onClose={()=>setVoucherModal(false)} settings={settings} clients={clients} equipment={equipment} offers={offers} setOffers={setOffers} setErr={setErr} flash={flash} setVouchers={setVouchers}/>}
       {voucherEdit && <VoucherModal onClose={()=>setVoucherEdit(null)} initial={voucherEdit} settings={settings} clients={clients} equipment={equipment} offers={offers} setOffers={setOffers} setErr={setErr} flash={flash} setVouchers={setVouchers}/>}
