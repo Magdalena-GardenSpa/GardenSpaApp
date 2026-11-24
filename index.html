@@ -174,7 +174,15 @@ function waPhone(p){ const d=String(p||'').replace(/\D/g,''); return d.startsWit
 function displayName(phone, name){ return name ? name : phone + ' (brak imienia)'; }
 function isVoucherExpired(v){ if(!v) return false; const today=new Date(); const u=new Date(v.valid_until); return u < today; }
 function isVoucherUsable(v){ return v && !v.redeemed && !isVoucherExpired(v); }
-function voucherStatus(v){ if(v.redeemed) return {label:"Wykorzystany",cls:"b-grey"}; if(isVoucherExpired(v)) return {label:"Wygasły",cls:"b-red"}; if(v.linked_offer_id) return {label:"Termin ustalony",cls:"b-blue"}; return {label:"Aktywny",cls:"b-green"}; }
+function voucherStatus(v){
+  if(v.redeemed) return {label:"Wykorzystany",cls:"b-grey"};
+  // KOLEJNOŚĆ WAŻNA: najpierw sprawdź czy termin jest ustalony (ma podpiętą ofertę).
+  // Taki voucher JEST już zarezerwowany i nie powinien się "wygaszać" nawet jeśli minie
+  // data ważności - bo klient ma już termin wynajmu.
+  if(v.linked_offer_id) return {label:"Termin ustalony",cls:"b-blue"};
+  if(isVoucherExpired(v)) return {label:"Wygasły",cls:"b-red"};
+  return {label:"Aktywny",cls:"b-green"};
+}
 function paymentLabel(p){ return p==="paid_full"?"Opłacony w całości":p==="deposit"?"Zadatek wpłacony":"Nieopłacony"; }
 function dateRangeLabel(o){
   const start = new Date(o.year, o.month, o.day);
@@ -1954,7 +1962,7 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
   const doneCount = offers.filter(o=>o.status==="done").length;
   const activeCount = offers.filter(o=>o.status!=="done" && !isExpired(o)).length;
   const voucherActiveCount = vouchers.filter(v=>isVoucherUsable(v)).length;
-  const voucherExpiredCount = vouchers.filter(v=>!v.redeemed && isVoucherExpired(v)).length;
+  const voucherExpiredCount = vouchers.filter(v=>!v.redeemed && !v.linked_offer_id && isVoucherExpired(v)).length;
   const voucherDoneCount = vouchers.filter(v=>v.redeemed).length;
 
   return (
@@ -3246,3 +3254,5 @@ insert into gs_packages (name,price,note) values
 
 insert into gs_tiers (mode,emoji,title,subtitle,perks,show_upsell,upsell_text) values
 ('day','🌙','Wieczór we dwoje','1 doba — idealny prezent na "tylko dla nas"','🎁 W prezencie: pierw
+
+  
