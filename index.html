@@ -400,7 +400,7 @@ function offerMsg(o, name, settings, equipment, packages, tiers, clients, vouche
   const headLine = (useTier ? `${eqName}${setLine} — ${tier}` : `${eqName}${setLine} — ${nights} ${dobaForm(nights)}`).replace(/\s+/g,' ').replace(/\s+—/,' —');
   const extrasLine = extras ? `\n${extras}.` : '';
   const zadShown = Math.min(calc.zadatek, payableNow);
-  const zadClause = zadShown>0 ? (zadShown<payableNow ? ` (w tym zadatek ${fmt(zadShown)} przy rezerwacji)` : ` — płatne przy rezerwacji`) : '';
+  const zadClause = o.fully_paid ? ' ✅ OPŁACONE W CAŁOŚCI' : (zadShown>0 ? (zadShown<payableNow ? ` (w tym zadatek ${fmt(zadShown)} przy rezerwacji)` : ` — płatne przy rezerwacji`) : '');
   const dateLine = `\n📅 Termin: ${dateRangeLabel(o)} (godziny przywiezienia i odbioru ustalamy indywidualnie)`;
   let expDate = o.expires_at ? new Date(o.expires_at) : null;
   if(!expDate || expDate < new Date()) expDate = settings ? new Date(computeExpiry(settings)) : null;
@@ -950,7 +950,8 @@ function Klienci({clients,setClients,offers,equipment,settings,packages,tiers,vo
               <div className="muted" style={{fontSize:12}}>{dateRangeLabel(o)}</div>
               <div style={{display:"flex",gap:4,marginTop:4,flexWrap:"wrap"}}>
                 {o.voucher_code && <span style={{fontSize:10,fontWeight:600,color:"#9a6b00",background:"#fff4d4",padding:"1px 6px",borderRadius:8,border:"1px solid var(--gold)"}}>🎁 {o.voucher_code}</span>}
-                {o.zadatek_paid && o.status!=="done" && <span style={{fontSize:10,fontWeight:600,color:"var(--green-d)",background:"#e8f0e9",padding:"1px 6px",borderRadius:8}}>💰 Zadatek OK</span>}
+                {o.fully_paid && o.status!=="done" && <span style={{fontSize:10,fontWeight:600,color:"var(--green-d)",background:"#d1f0d3",padding:"1px 6px",borderRadius:8,border:"1px solid var(--green)"}}>✅ Opłacona w całości</span>}
+                {o.zadatek_paid && !o.fully_paid && o.status!=="done" && <span style={{fontSize:10,fontWeight:600,color:"var(--green-d)",background:"#e8f0e9",padding:"1px 6px",borderRadius:8}}>💰 Zadatek OK</span>}
                 {o.invoice_required && (o.invoice_issued
                   ? <span style={{fontSize:10,fontWeight:600,color:"var(--green-d)",background:"#e8f0e9",padding:"1px 6px",borderRadius:8}}>📄 Faktura wyst.</span>
                   : <span style={{fontSize:10,fontWeight:600,color:"#9a6b00",background:"#fdf0d9",padding:"1px 6px",borderRadius:8}}>📄 Wymaga faktury</span>)}
@@ -1452,7 +1453,10 @@ function generateOfferPDF(o, equipment, packages, tiers, clients, settings, vouc
   if(calc.discountAmt>0) rows.push('<tr><td style="color:#9a6b00">Rabat</td><td class="right" style="color:#9a6b00">− ' + fmt(calc.discountAmt) + '</td></tr>');
   rows.push('<tr class="total"><td>Razem do zapłaty za wynajem</td><td class="right">' + fmt(payableNow) + '</td></tr>');
 
-  const paymentBox = o.zadatek_paid
+  const paymentBox = o.fully_paid
+    ? '<div class="payment-box" style="background:#d1f0d3;border-color:#153826"><h3>✅ Status płatności</h3><b>OPŁACONA W CAŁOŚCI</b>' +
+      (o.zadatek_paid_date ? ' dnia ' + new Date(o.zadatek_paid_date).toLocaleDateString('pl-PL') : '') + '.<br>Kwota wynajmu rozliczona w całości.</div>'
+    : o.zadatek_paid
     ? '<div class="payment-box"><h3>💰 Status płatności</h3>Zadatek <b>' + fmt(calc.zadatek) + '</b> wpłacony' +
       (o.zadatek_paid_date ? ' dnia ' + new Date(o.zadatek_paid_date).toLocaleDateString('pl-PL') : '') + '.' +
       (payableNow>calc.zadatek ? '<br>Pozostało do zapłaty: <b>' + fmt(payableNow-calc.zadatek) + '</b>' : '<br>Kwota wynajmu rozliczona w całości.') +
@@ -1601,8 +1605,21 @@ function OfferDetailModal({offer,onClose,equipment,packages,tiers,clients,settin
         </>
           );
         })()}
-        {offer.status!=="accepted" && offer.status!=="done" && <div className="card" style={{marginTop:12,cursor:"pointer",background:offer.zadatek_paid?"var(--green-l)":"#f6f4ee"}} onClick={()=>onToggleZadatek(offer)}>
-          <b style={{color:offer.zadatek_paid?"var(--green-d)":"var(--muted)"}}>{offer.zadatek_paid?"✅ Zadatek wpłacony":"⬜ Oznacz zadatek jako wpłacony"}</b>
+        {offer.status!=="accepted" && offer.status!=="done" && <div className="card" style={{marginTop:12,padding:12,background:offer.fully_paid?"#e8f0e9":offer.zadatek_paid?"var(--green-l)":"#f6f4ee"}}>
+          <div style={{fontWeight:700,marginBottom:8,color:offer.fully_paid?"var(--green-d)":offer.zadatek_paid?"var(--green-d)":"var(--muted)"}}>
+            💰 Status płatności: {offer.fully_paid?"✅ Opłacona w całości":offer.zadatek_paid?"✅ Zadatek wpłacony":"⬜ Brak wpłaty"}
+          </div>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+            <button className={"btn sm "+(!offer.zadatek_paid && !offer.fully_paid?"primary":"ghost")} onClick={()=>onToggleZadatek(offer,"none")}>⬜ Brak wpłaty</button>
+            <button className={"btn sm "+(offer.zadatek_paid && !offer.fully_paid?"primary":"ghost")} onClick={()=>onToggleZadatek(offer,"zadatek")}>💰 Zadatek wpłacony</button>
+            <button className={"btn sm "+(offer.fully_paid?"primary":"ghost")} onClick={()=>onToggleZadatek(offer,"full")}>✅ Opłacona w całości</button>
+          </div>
+        </div>}
+        {(offer.status==="accepted" || offer.status==="done") && (offer.fully_paid || offer.zadatek_paid) && <div className="card" style={{marginTop:12,padding:10,background:offer.fully_paid?"#e8f0e9":"var(--green-l)"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <b style={{color:"var(--green-d)",fontSize:13}}>{offer.fully_paid?"✅ Opłacona w całości":"💰 Zadatek wpłacony"}</b>
+            <button className="btn ghost sm" onClick={()=>onToggleZadatek(offer, offer.fully_paid?"zadatek":"full")}>{offer.fully_paid?"↔ Zmień na: tylko zadatek":"↔ Zmień na: opłacona w całości"}</button>
+          </div>
         </div>}
         <div className="card" style={{marginTop:12,cursor:"pointer",background:offer.invoice_issued?"#e8f0e9":"#f6f4ee"}} onClick={()=>onToggleInvoice&&onToggleInvoice(offer)}>
           <b style={{color:offer.invoice_issued?"var(--green-d)":"var(--muted)"}}>{offer.invoice_issued?"✅ Faktura wystawiona":"⬜ Oznacz jako fakturowaną"}</b>
@@ -1895,19 +1912,34 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
     try{ await sbUpdate("gs_offers","id",o.id,patch); setOffers(p=>p.map(x=>x.id===o.id?{...x,...patch}:x)); flash(msg); }
     catch(ex){ setErr(String(ex.message||ex)); }
   };
-  const toggleZadatek = async (o) => {
+  const toggleZadatek = async (o, mode) => {
+    // mode: "none" | "zadatek" | "full" — 3-stanowy wybór z UI; stare kliknięcie bez mode = toggle
     try{
-      const nv = !o.zadatek_paid;
-      const patch = {zadatek_paid: nv};
-      // Zaznaczasz zadatek jako wpłacony na ofercie roboczej/wysłanej = klient zaakceptował
-      // → automatycznie zmień status na "Zaakceptowana"
-      if(nv && (o.status==="draft" || o.status==="sent")){
-        patch.status = "accepted";
+      let patch;
+      if(mode === "none"){
+        patch = {zadatek_paid:false, fully_paid:false};
+      } else if(mode === "zadatek"){
+        patch = {zadatek_paid:true, fully_paid:false, zadatek_paid_date:new Date().toISOString().slice(0,10)};
+        if(o.status==="draft" || o.status==="sent") patch.status = "accepted";
+      } else if(mode === "full"){
+        patch = {zadatek_paid:true, fully_paid:true, zadatek_paid_date:o.zadatek_paid_date||new Date().toISOString().slice(0,10)};
+        if(o.status==="draft" || o.status==="sent") patch.status = "accepted";
+      } else {
+        // Zachowanie wsteczne - jeśli ktoś wywoła bez mode, toggle zadatku
+        const nv = !o.zadatek_paid;
+        patch = {zadatek_paid: nv};
+        if(nv){
+          patch.zadatek_paid_date = new Date().toISOString().slice(0,10);
+          if(o.status==="draft" || o.status==="sent") patch.status = "accepted";
+        } else {
+          patch.fully_paid = false; // odznaczasz zadatek = na pewno nie opłacona w całości
+        }
       }
       await sbUpdate("gs_offers","id",o.id,patch);
       setOffers(p=>p.map(x=>x.id===o.id?{...x,...patch}:x));
       setModal(m=>m && m.id===o.id ? {...m,...patch} : m);
-      if(patch.status==="accepted") flash("✅ Zadatek wpłacony · status: Zaakceptowana");
+      const msg = patch.fully_paid ? "✅ Opłacona w całości" : patch.zadatek_paid ? "💰 Zadatek wpłacony" : "⬜ Brak wpłaty";
+      flash(`${msg}${patch.status==="accepted"?" · status: Zaakceptowana":""}`);
     }catch(ex){ setErr(String(ex.message||ex)); }
   };
   const toggleInvoice = async (o) => {
