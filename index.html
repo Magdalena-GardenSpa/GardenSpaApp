@@ -1800,6 +1800,23 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
       flash("Voucher oznaczony jako zrealizowany."); }
     catch(ex){ setErr(String(ex.message||ex)); }
   };
+
+  const unmarkVoucherRedeemed = async (v) => {
+    if(!confirm("Cofnąć oznaczenie vouchera jako zrealizowany?\n\nUżyj tego, jeśli oznaczenie było przedwczesne (np. voucher ma dopiero zarezerwowany termin, ale wynajem się jeszcze nie odbył).")) return;
+    try{
+      await sbUpdate("gs_vouchers","id",v.id,{redeemed:false});
+      setVouchers(p=>p.map(x=>x.id===v.id?{...x,redeemed:false}:x));
+      // Jeśli oferta była oznaczona jako "done" przez wcześniejsze zrealizowanie - cofnij do "accepted"
+      if(v.linked_offer_id){
+        const linkedOffer = offers.find(o=>o.id===v.linked_offer_id);
+        if(linkedOffer && linkedOffer.status==="done"){
+          await sbUpdate("gs_offers","id",v.linked_offer_id,{status:"accepted"});
+          setOffers(p=>p.map(x=>x.id===v.linked_offer_id?{...x,status:"accepted"}:x));
+        }
+      }
+      flash("↩ Cofnięto oznaczenie zrealizowania — voucher wraca na 'Termin ustalony'.");
+    }catch(ex){ setErr(String(ex.message||ex)); }
+  };
   const delVoucher = async (v) => {
     if(!confirm(`Usunąć voucher ${v.code}? Tej operacji nie można cofnąć.`)) return;
     try{ await sbDelete("gs_vouchers",v.id); setVouchers(p=>p.filter(x=>x.id!==v.id)); flash("Usunięto voucher."); }
@@ -2015,6 +2032,7 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
                 <button className="btn ghost sm" onClick={()=>setVoucherEdit(v)}>✏️ Edytuj</button>
                 {!v.redeemed && !v.linked_offer_id && <button className="btn ghost sm" onClick={()=>setVoucherTerm(v)}>📅 Ustal termin realizacji</button>}
                 {v.linked_offer_id && !v.redeemed && <button className="btn ghost sm" onClick={()=>markVoucherRedeemed(v)}>✅ Oznacz jako zrealizowany</button>}
+                {v.redeemed && <button className="btn ghost sm" style={{color:"#9a6b00",borderColor:"#e5c88a"}} onClick={()=>unmarkVoucherRedeemed(v)}>↩ Cofnij zrealizowanie</button>}
                 <button className="btn ghost sm" style={{color:"#b3261e",borderColor:"#e3b3ab"}} onClick={()=>delVoucher(v)}>🗑 Usuń</button>
               </div>
             </div>); })}
@@ -3254,5 +3272,3 @@ insert into gs_packages (name,price,note) values
 
 insert into gs_tiers (mode,emoji,title,subtitle,perks,show_upsell,upsell_text) values
 ('day','🌙','Wieczór we dwoje','1 doba — idealny prezent na "tylko dla nas"','🎁 W prezencie: pierw
-
-  
