@@ -416,7 +416,7 @@ function offerMsg(o, name, settings, equipment, packages, tiers, clients, vouche
   const woodLine = woodAlreadyMentioned
     ? (woodPkg ? `\n🔥 Każdy kolejny worek drewna: ${fmt(woodPkg.price)}.` : '')
     : `\n🔥 Pierwszy worek drewna na rozpalenie — gratis od nas${woodPkg?`, każdy kolejny ${fmt(woodPkg.price)}`:''}.`;
-  return `${greet} Oto Twoja oferta GardenSpa 🌿🛁\n${headLine}${capLine}${dateLine}${extrasLine}${customLine}\n${breakdown}\nRazem: ${fmt(payableNow)}${zadClause}.\nDodatkowo kaucja zwrotna: ${fmt(calc.deposit)} płatna w dniu wynajmu.${woodLine}${altBlock}${nudge}${validLine}\n📩 Żeby zarezerwować ten termin, odpisz i wpłać zadatek ${fmt(zadShown>0?zadShown:calc.zadatek)} BLIK-iem na numer ${settings.blik_phone||''} — termin blokujemy od razu po wpłacie.\n📸 Zobacz naszą nową balię i saunę na zdjęciach: ${settings.social_url||'https://linktr.ee/GardenSpa_Wellness_'}`;
+  return `${greet} Oto Twoja oferta GardenSpa 🌿🛁\n${headLine}${capLine}${dateLine}${extrasLine}${customLine}\n${breakdown}\nRazem: ${fmt(payableNow)}${zadClause}.\nDodatkowo kaucja zwrotna: ${fmt(calc.deposit)} płatna w dniu wynajmu.${woodLine}${altBlock}${nudge}${validLine}\n${o.fully_paid ? '✅ Rezerwacja potwierdzona — oferta opłacona w całości.' : (calc.zadatek>0 ? `📩 Żeby zarezerwować ten termin, odpisz i wpłać zadatek ${fmt(zadShown>0?zadShown:calc.zadatek)} BLIK-iem na numer ${settings.blik_phone||''} — termin blokujemy od razu po wpłacie.` : `📩 Żeby zarezerwować ten termin, odpisz na tę wiadomość 🌿`)}\n📸 Zobacz naszą nową balię i saunę na zdjęciach: ${settings.social_url||'https://linktr.ee/GardenSpa_Wellness_'}`;
 }
 
 /* ================= APP ================= */
@@ -1605,22 +1605,18 @@ function OfferDetailModal({offer,onClose,equipment,packages,tiers,clients,settin
         </>
           );
         })()}
-        {offer.status!=="accepted" && offer.status!=="done" && <div className="card" style={{marginTop:12,padding:12,background:offer.fully_paid?"#e8f0e9":offer.zadatek_paid?"var(--green-l)":"#f6f4ee"}}>
+        {/* Kafelek Status płatności - ZAWSZE widoczny, 3 opcje do wyboru */}
+        <div className="card" style={{marginTop:12,padding:12,background:offer.fully_paid?"#d1f0d3":offer.zadatek_paid?"var(--green-l)":"#f6f4ee",border:offer.fully_paid?"1px solid var(--green)":"1px solid var(--line)"}}>
           <div style={{fontWeight:700,marginBottom:8,color:offer.fully_paid?"var(--green-d)":offer.zadatek_paid?"var(--green-d)":"var(--muted)"}}>
-            💰 Status płatności: {offer.fully_paid?"✅ Opłacona w całości":offer.zadatek_paid?"✅ Zadatek wpłacony":"⬜ Brak wpłaty"}
+            💰 Status płatności: {offer.fully_paid?"✅ OPŁACONA W CAŁOŚCI":offer.zadatek_paid?"✅ Zadatek wpłacony":"⬜ Brak wpłaty"}
           </div>
           <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
             <button className={"btn sm "+(!offer.zadatek_paid && !offer.fully_paid?"primary":"ghost")} onClick={()=>onToggleZadatek(offer,"none")}>⬜ Brak wpłaty</button>
             <button className={"btn sm "+(offer.zadatek_paid && !offer.fully_paid?"primary":"ghost")} onClick={()=>onToggleZadatek(offer,"zadatek")}>💰 Zadatek wpłacony</button>
             <button className={"btn sm "+(offer.fully_paid?"primary":"ghost")} onClick={()=>onToggleZadatek(offer,"full")}>✅ Opłacona w całości</button>
           </div>
-        </div>}
-        {(offer.status==="accepted" || offer.status==="done") && (offer.fully_paid || offer.zadatek_paid) && <div className="card" style={{marginTop:12,padding:10,background:offer.fully_paid?"#e8f0e9":"var(--green-l)"}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-            <b style={{color:"var(--green-d)",fontSize:13}}>{offer.fully_paid?"✅ Opłacona w całości":"💰 Zadatek wpłacony"}</b>
-            <button className="btn ghost sm" onClick={()=>onToggleZadatek(offer, offer.fully_paid?"zadatek":"full")}>{offer.fully_paid?"↔ Zmień na: tylko zadatek":"↔ Zmień na: opłacona w całości"}</button>
-          </div>
-        </div>}
+          {offer.zadatek_paid_date && <div className="muted" style={{fontSize:11,marginTop:6}}>📅 Płatność odnotowana: {new Date(offer.zadatek_paid_date).toLocaleDateString('pl-PL')}</div>}
+        </div>
         <div className="card" style={{marginTop:12,cursor:"pointer",background:offer.invoice_issued?"#e8f0e9":"#f6f4ee"}} onClick={()=>onToggleInvoice&&onToggleInvoice(offer)}>
           <b style={{color:offer.invoice_issued?"var(--green-d)":"var(--muted)"}}>{offer.invoice_issued?"✅ Faktura wystawiona":"⬜ Oznacz jako fakturowaną"}</b>
           {offer.invoice_issued && offer.invoice_date && <div style={{fontSize:11,color:"var(--muted)",marginTop:2}}>📄 {new Date(offer.invoice_date).toLocaleDateString('pl-PL')}</div>}
