@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="pl">
 <head>
@@ -1347,16 +1346,22 @@ function OfferFormModal({onClose, initial, equipment, packages, tiers, clients, 
         <div className="calc-box">
           {f.rate_override!=null && f.rate_override!=='' && <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginBottom:6,paddingBottom:6,borderBottom:"1px dashed var(--line)"}}>
             <span style={{fontSize:11.5,color:"#9a6b00"}}>⚠️ Cena wpisana ręcznie ({fmt(f.rate_override)}) — zmiany dat i dób jej nie przeliczają.</span>
-            <button className="btn ghost sm" onClick={()=>set("rate_override","")}>Przelicz od nowa</button>
+            <button className="btn ghost sm" onClick={()=>setF(p=>({...p,rate_override:"",transport_override:"",zadatek_override:"",deposit_override:""}))}>🔄 Przelicz wszystko od nowa</button>
           </div>}
           <div className="calc-line"><span>Wynajem<div className="muted" style={{fontSize:10.5,fontWeight:400,lineHeight:1.35}}>{(()=>{if(f.rate_override!=null && +f.rate_override>0) return 'kwota wpisana ręcznie'; const q=+(f.days??f.qty)||1; if(f.mode!=='day') return f.mode==='weekend'?(q>=3?'Weekend — 3 doby':'Weekend — 2 doby'):'Tydzień'; if(q<=1) return `Pierwsza doba ${fmt(rate('day'))}`; let wk=0,pn=0; for(let i=1;i<q;i++){const d=new Date(f.year,f.month,f.day+i).getDay(); if(d===5||d===6||d===0) wk++; else pn++;} const rw=+eqSel.rate_extra_day_weekend||+eqSel.rate_extra_day||0, rp=+eqSel.rate_extra_day||0; return `Pierwsza doba ${fmt(rate('day'))}` + (pn?` + ${pn} × kolejna pn-czw ${fmt(rp)}`:'') + (wk?` + ${wk} × kolejna weekend ${fmt(rw)}`:'');})()}</div></span><span>{fmt(calc.rental)}</span></div>
           {calc.discountAmt>0 && <div className="calc-line" style={{color:"#9a6b00"}}><span>Rabat polecenia</span><span>-{fmt(calc.discountAmt)}{calc.discountType==='percent'?` (${calc.discountPct}%)`:''}</span></div>}
-          <div className="calc-line"><span>Transport<div className="muted" style={{fontSize:10.5,fontWeight:400,lineHeight:1.35}}>{(f.transport_override!=null && +f.transport_override>0) ? 'kwota wpisana ręcznie' : <>{calc.equipCount>1 ? <>Zestaw {calc.equipCount} sprzętów = {calc.equipCount} osobnych kursów<br/></> : null}{f.km||0} km × 4 przejazdy{calc.equipCount>1?` × ${calc.equipCount} sprzęty`:""} = {calc.kmTotal} km<br/>{settings.free_km*4*calc.equipCount} km w cenie · {calc.billKm} km płatne × {settings.km_rate} zł/km</>}</div></span><span>{fmt(calc.transport)}</span></div>
+          {f.transport_override!=null && f.transport_override!=='' && <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginBottom:6,paddingBottom:6,borderBottom:"1px dashed var(--line)"}}>
+            <span style={{fontSize:11.5,color:"#9a6b00"}}>⚠️ Transport wpisany ręcznie ({fmt(+f.transport_override||0)}) — zmiany km nie przeliczają.</span>
+            <button className="btn ghost sm" onClick={()=>set("transport_override","")}>Przelicz</button>
+          </div>}
+          <div className="calc-line"><span>Transport<div className="muted" style={{fontSize:10.5,fontWeight:400,lineHeight:1.35}}>{(f.transport_override!=null && f.transport_override!=='') ? 'kwota wpisana ręcznie' : <>{calc.equipCount>1 ? <>Zestaw {calc.equipCount} sprzętów = {calc.equipCount} osobnych kursów<br/></> : null}{f.km||0} km × 4 przejazdy{calc.equipCount>1?` × ${calc.equipCount} sprzęty`:""} = {calc.kmTotal} km<br/>{settings.free_km*4*calc.equipCount} km w cenie · {calc.billKm} km płatne × {settings.km_rate} zł/km</>}</div></span><span>{fmt(calc.transport)}</span></div>
           <div className="calc-line"><span>Dodatki</span><span>{fmt(calc.addonsSum)}</span></div>
           {calc.voucherAmt>0 && <div className="calc-line" style={{color:"#9a6b00"}}><span>Voucher podarunkowy</span><span>-{fmt(calc.voucherAmt)}</span></div>}
           {calc.customSum!==0 && <div className="calc-line"><span>Uzgodnienia własne</span><span>{fmt(calc.customSum)}</span></div>}
           <div className="calc-total"><span>Razem do zapłaty za usługę</span><span>{fmt(calc.total-calc.deposit)}</span></div>
-          {calc.zadatek>0 && <div className="calc-line" style={{fontSize:11.5,color:"var(--muted)",marginTop:-4}}><span>&nbsp;&nbsp;w tym zadatek przy rezerwacji</span><span>{fmt(Math.min(calc.zadatek, calc.total-calc.deposit))}</span></div>}
+          {calc.zadatek>0 && <div className="calc-line" style={{fontSize:11.5,color:"var(--muted)",marginTop:-4}}><span>&nbsp;&nbsp;w tym zadatek przy rezerwacji{f.zadatek_override!=null && f.zadatek_override!=='' ? ' (ręcznie)':''}</span><span>{fmt(Math.min(calc.zadatek, calc.total-calc.deposit))}</span></div>}
+          {f.zadatek_override!=null && f.zadatek_override!=='' && <div style={{display:"flex",justifyContent:"flex-end",marginTop:4}}><button className="btn ghost sm" onClick={()=>set("zadatek_override","")} style={{fontSize:10}}>↻ Zadatek — przelicz auto</button></div>}
+          {f.deposit_override!=null && f.deposit_override!=='' && <div style={{display:"flex",justifyContent:"flex-end",marginTop:4}}><button className="btn ghost sm" onClick={()=>set("deposit_override","")} style={{fontSize:10}}>↻ Kaucja — przelicz auto</button></div>}
           <div className="calc-line" style={{color:"#9a6b00",fontWeight:700,marginTop:6}}><span>+ Kaucja zwrotna (w dniu wynajmu)</span><span>{fmt(calc.deposit)}</span></div>
           <div className="calc-total"><span>RAZEM Z KAUCJĄ</span><span>{fmt(calc.total)}</span></div>
         </div>
