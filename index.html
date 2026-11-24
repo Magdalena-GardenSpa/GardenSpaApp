@@ -233,7 +233,14 @@ function computeCalc(f, equipment, settings, packages, clients, vouchers){
     }
   }
   if(f.frozen_settings && typeof f.frozen_settings === 'object'){
-    settings = { ...settings, ...f.frozen_settings };
+    // Bierzemy z frozen tylko wartości > 0 (chroni przed zerowymi snapshotami ustawień
+    // jak km_rate=0, free_km=0, zadatek=0 które zerowałyby kalkulacje)
+    const merged = {...settings};
+    Object.keys(f.frozen_settings).forEach(k=>{
+      const v = f.frozen_settings[k];
+      if(v !== null && v !== undefined && v !== '' && !(typeof v==='number' && v===0)) merged[k] = v;
+    });
+    settings = merged;
   }
   const eq = equipment.find(e=>e.id===f.equipment_id) || equipment[0] || {};
   const startDow = new Date(f.year, f.month, f.day).getDay();
