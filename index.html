@@ -2412,7 +2412,11 @@ function VoucherTermModal({voucher,onClose,equipment,clients,settings,setErr,fla
     // Zadatek status - jeśli voucher w całości pokrywa + nic do dopłaty = zadatek wpłacony
     // Jeśli dopłata gotówką przy odbiorze = też zadatek ma status wpłacony (voucher = zadatek)
     // Jeśli dopłata zadatek BLIK = zadatek NIE wpłacony (klient ma wpłacić)
+    // zadPaid = true gdy jest wpłata (zadatek LUB całość)
+    // fullyPaid = true tylko gdy voucher pokrywa całość LUB klient wpłacił wszystko
+    // (gotówka przy odbiorze = ZADATEK wpłacony, ale NIE całość - czeka na gotówkę)
     const zadPaid = f.doplata_mode==="covered" || f.doplata_mode==="gotowka" || f.doplata_mode==="paid";
+    const fullyPaid = f.doplata_mode==="covered" || f.doplata_mode==="paid";
 
     try{
       // Dodaj obdarowanego do klientów jeśli trzeba
@@ -2420,15 +2424,17 @@ function VoucherTermModal({voucher,onClose,equipment,clients,settings,setErr,fla
         const ins = await sbInsert("gs_clients",{phone:clientPhone, name:clientName, city:f.delivery_address||""});
         setClients && setClients(p=>[ins[0],...p]);
       }
+      const today = new Date().toISOString().slice(0,10);
       const offerBody = {
         phone:clientPhone, name:clientName, equipment_id:f.equipment_id, mode:"day", qty:days, km:0,
         addon_ids:[], extra_equip_ids:[], custom_items:[],
         rate_override: Math.round((+f.total_amount||voucherValue)/days),
-        transport_override:0, zadatek_override:0, deposit_override:null,
+        transport_override:null, zadatek_override:null, deposit_override:null,
         voucher_code:voucher.code, offer_cost:0,
         year:y, month:m-1, day:d, days,
         delivery_address:f.delivery_address, delivery_time:f.time_start, pickup_time:f.time_end,
-        status:f.initial_status, zadatek_paid:zadPaid,
+        status:f.initial_status, zadatek_paid:zadPaid, fully_paid:fullyPaid,
+        zadatek_paid_date: zadPaid ? today : null,
         internal_note:autoNote
       };
       const ins = await sbInsert("gs_offers",offerBody);
@@ -2440,7 +2446,8 @@ function VoucherTermModal({voucher,onClose,equipment,clients,settings,setErr,fla
       const smsHint = f.sms_to==="buyer" ? " · wyślij SMS do kupującego z listy ofert"
         : f.sms_to==="giftee" ? " · wyślij SMS do obdarowanego z listy ofert"
         : "";
-      flash(`✅ Oferta z vouchera utworzona · status: ${statusLabel}${doplata>0?` · dopłata: ${doplata} zł`:""}${smsHint}`);
+      const paymentLabel = fullyPaid ? " · ✅ opłacona w całości" : zadPaid ? " · 💰 zadatek odnotowany" : "";
+      flash(`✅ Oferta z vouchera utworzona · status: ${statusLabel}${paymentLabel}${doplata>0?` · dopłata: ${doplata} zł`:""}${smsHint}`);
       onClose();
     }catch(ex){ setErr(String(ex.message||ex)); }
   };
