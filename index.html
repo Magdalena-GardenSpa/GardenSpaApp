@@ -259,7 +259,7 @@ function computeCalc(f, equipment, settings, packages, clients, vouchers){
   const qtyOf = () => +(f.days ?? f.qty) || 1;
   const daysRental = (e) => { const q=qtyOf(); if(f.mode!=='day') return rateOf(e); if(q<=1) return rateOf(e); let s=rateOf(e); for(let i=1;i<q;i++) s+=extraDayRate(e,i); return s; };
   let rentalBase, extraRental;
-  const hasRateOv = f.rate_override!=null && f.rate_override!=='' && !isNaN(+f.rate_override);
+  const hasRateOv = f.rate_override!=null && f.rate_override!=='' && !isNaN(+f.rate_override) && +f.rate_override > 0;
   if(hasRateOv){ rentalBase = +f.rate_override; extraRental = 0; }
   else { rentalBase = daysRental(eq); extraRental = extraEquip.reduce((s,e)=>s+daysRental(e),0); }
   // Mnożnik transportu: przy zestawie każdy sprzęt = osobny kurs (balia + sauna = 2× transport, 3 sprzęty = 3× transport)
@@ -267,14 +267,14 @@ function computeCalc(f, equipment, settings, packages, clients, vouchers){
   const freeKm = (+settings.free_km||0) * 4 * equipCount, kmRate = +settings.km_rate||0;
   const kmTotal = (+f.km||0) * 4 * equipCount;
   const billKm = Math.max(0, kmTotal - freeKm);
-  const hasTranspOv = f.transport_override!=null && f.transport_override!=='' && !isNaN(+f.transport_override);
+  const hasTranspOv = f.transport_override!=null && f.transport_override!=='' && !isNaN(+f.transport_override) && +f.transport_override > 0;
   const transport = hasTranspOv ? +f.transport_override : billKm*kmRate;
   const addonsSum = (f.addon_ids||[]).reduce((s,id)=>{ const p=packages.find(x=>x.id===id); return s+(p?+p.price||0:0); },0);
   const customSum = (f.custom_items||[]).reduce((s,c)=>s+(+c.price||0),0);
   const depositAuto = (+eq.deposit||0) + extraEquip.reduce((s,e)=>s+(+e.deposit||0),0);
-  const hasDepOv = f.deposit_override!=null && f.deposit_override!=='' && !isNaN(+f.deposit_override);
+  const hasDepOv = f.deposit_override!=null && f.deposit_override!=='' && !isNaN(+f.deposit_override) && +f.deposit_override > 0;
   const deposit = hasDepOv ? +f.deposit_override : depositAuto;
-  const hasZadOv = f.zadatek_override!=null && f.zadatek_override!=='' && !isNaN(+f.zadatek_override);
+  const hasZadOv = f.zadatek_override!=null && f.zadatek_override!=='' && !isNaN(+f.zadatek_override) && +f.zadatek_override > 0;
   const zad = hasZadOv ? +f.zadatek_override : (+settings.zadatek||0);
   const client = clients.find(c=>c.phone===f.phone);
   const clientDiscType = client?.referral_discount_type || 'percent';
