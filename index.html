@@ -408,7 +408,10 @@ function offerMsg(o, name, settings, equipment, packages, tiers, clients, vouche
   const headLine = (useTier ? `${eqName}${setLine} — ${tier}` : `${eqName}${setLine} — ${nights} ${dobaForm(nights)}`).replace(/\s+/g,' ').replace(/\s+—/,' —');
   const extrasLine = extras ? `\n${extras}.` : '';
   const zadShown = Math.min(calc.zadatek, payableNow);
-  const zadClause = o.fully_paid ? ' ✅ OPŁACONE W CAŁOŚCI' : (zadShown>0 ? (zadShown<payableNow ? ` (w tym zadatek ${fmt(zadShown)} przy rezerwacji)` : ` — płatne przy rezerwacji`) : '');
+  // Voucher pokrywa całość - traktuj jak opłacone w całości (choć pole fully_paid nie było ustawione)
+  const voucherCoversAllSMS = calc.voucherAmt > 0 && payableNow <= 0;
+  const effectivelyFullyPaidSMS = o.fully_paid || voucherCoversAllSMS;
+  const zadClause = effectivelyFullyPaidSMS ? ' ✅ OPŁACONE W CAŁOŚCI' : (zadShown>0 ? (zadShown<payableNow ? ` (w tym zadatek ${fmt(zadShown)} przy rezerwacji)` : ` — płatne przy rezerwacji`) : '');
   const dateLine = `\n📅 Termin: ${dateRangeLabel(o)} (godziny przywiezienia i odbioru ustalamy indywidualnie)`;
   let expDate = o.expires_at ? new Date(o.expires_at) : null;
   if(!expDate || expDate < new Date()) expDate = settings ? new Date(computeExpiry(settings)) : null;
@@ -424,7 +427,7 @@ function offerMsg(o, name, settings, equipment, packages, tiers, clients, vouche
   const woodLine = woodAlreadyMentioned
     ? (woodPkg ? `\n🔥 Każdy kolejny worek drewna: ${fmt(woodPkg.price)}.` : '')
     : `\n🔥 Pierwszy worek drewna na rozpalenie — gratis od nas${woodPkg?`, każdy kolejny ${fmt(woodPkg.price)}`:''}.`;
-  return `${greet} Oto Twoja oferta GardenSpa 🌿🛁\n${headLine}${capLine}${dateLine}${extrasLine}${customLine}\n${breakdown}\nRazem: ${fmt(payableNow)}${zadClause}.\nDodatkowo kaucja zwrotna: ${fmt(calc.deposit)} płatna w dniu wynajmu.${woodLine}${altBlock}${nudge}${validLine}\n${o.fully_paid ? '✅ Rezerwacja potwierdzona — oferta opłacona w całości.' : (calc.zadatek>0 ? `📩 Żeby zarezerwować ten termin, odpisz i wpłać zadatek ${fmt(zadShown>0?zadShown:calc.zadatek)} BLIK-iem na numer ${settings.blik_phone||''} — termin blokujemy od razu po wpłacie.` : `📩 Żeby zarezerwować ten termin, odpisz na tę wiadomość 🌿`)}\n📸 Zobacz naszą nową balię i saunę na zdjęciach: ${settings.social_url||'https://linktr.ee/GardenSpa_Wellness_'}`;
+  return `${greet} Oto Twoja oferta GardenSpa 🌿🛁\n${headLine}${capLine}${dateLine}${extrasLine}${customLine}\n${breakdown}\nRazem: ${fmt(payableNow)}${zadClause}.\nDodatkowo kaucja zwrotna: ${fmt(calc.deposit)} płatna w dniu wynajmu.${woodLine}${altBlock}${nudge}${validLine}\n${effectivelyFullyPaidSMS ? '✅ Rezerwacja potwierdzona — oferta opłacona w całości.' : (calc.zadatek>0 ? `📩 Żeby zarezerwować ten termin, odpisz i wpłać zadatek ${fmt(zadShown>0?zadShown:calc.zadatek)} BLIK-iem na numer ${settings.blik_phone||''} — termin blokujemy od razu po wpłacie.` : `📩 Żeby zarezerwować ten termin, odpisz na tę wiadomość 🌿`)}\n📸 Zobacz naszą nową balię i saunę na zdjęciach: ${settings.social_url||'https://linktr.ee/GardenSpa_Wellness_'}`;
 }
 
 /* ================= APP ================= */
@@ -1461,15 +1464,25 @@ function generateOfferPDF(o, equipment, packages, tiers, clients, settings, vouc
   if(calc.discountAmt>0) rows.push('<tr><td style="color:#9a6b00">Rabat</td><td class="right" style="color:#9a6b00">− ' + fmt(calc.discountAmt) + '</td></tr>');
   rows.push('<tr class="total"><td>Razem do zapłaty za wynajem</td><td class="right">' + fmt(payableNow) + '</td></tr>');
 
-  const paymentBox = o.fully_paid
-    ? '<div class="payment-box" style="background:#d1f0d3;border-color:#153826"><h3>✅ Status płatności</h3><b>OPŁACONA W CAŁOŚCI</b>' +
-      (o.zadatek_paid_date ? ' dnia ' + new Date(o.zadatek_paid_date).toLocaleDateString('pl-PL') : '') + '.<br>Kwota wynajmu rozliczona w całości.</div>'
-    : o.zadatek_paid
-    ? '<div class="payment-box"><h3>💰 Status płatności</h3>Zadatek <b>' + fmt(calc.zadatek) + '</b> wpłacony' +
-      (o.zadatek_paid_date ? ' dnia ' + new Date(o.zadatek_paid_date).toLocaleDateString('pl-PL') : '') + '.' +
-      (payableNow>calc.zadatek ? '<br>Pozostało do zapłaty: <b>' + fmt(payableNow-calc.zadatek) + '</b>' : '<br>Kwota wynajmu rozliczona w całości.') +
-      '</div>'
-    : '<div class="payment-box"><h3>💰 Status płatności</h3>Zadatek <b>' + fmt(calc.zadatek) + '</b> — oczekuje na wpłatę.</div>';
+  // Voucher pokrywa całość (payable <= 0 dzięki voucherAmt) traktujemy jak fully_paid
+  const voucherCoversAll = calc.voucherAmt > 0 && payableNow <= 0;
+  const effectivelyFullyPaid = o.fully_paid || voucherCoversAll;
+
+  let paymentBox;
+  if(effectivelyFullyPaid){
+    const dateStr = o.zadatek_paid_date ? ' dnia ' + new Date(o.zadatek_paid_date).toLocaleDateString('pl-PL') : '';
+    const sourceStr = voucherCoversAll && !o.fully_paid ? '<br>Pokryte z vouchera ' + (o.voucher_code||'') + '.' : '';
+    paymentBox = '<div class="payment-box" style="background:#d1f0d3;border-color:#153826"><h3>✅ Status płatności</h3><b>OPŁACONA W CAŁOŚCI</b>' + dateStr + '.' + sourceStr + '</div>';
+  } else if(o.zadatek_paid && calc.zadatek > 0){
+    const dateStr = o.zadatek_paid_date ? ' dnia ' + new Date(o.zadatek_paid_date).toLocaleDateString('pl-PL') : '';
+    const rest = payableNow > calc.zadatek ? '<br>Pozostało do zapłaty: <b>' + fmt(payableNow-calc.zadatek) + '</b>' : '<br>Kwota wynajmu rozliczona w całości.';
+    paymentBox = '<div class="payment-box"><h3>💰 Status płatności</h3>Zadatek <b>' + fmt(calc.zadatek) + '</b> wpłacony' + dateStr + '.' + rest + '</div>';
+  } else if(calc.zadatek > 0){
+    paymentBox = '<div class="payment-box"><h3>💰 Status płatności</h3>Zadatek <b>' + fmt(calc.zadatek) + '</b> — oczekuje na wpłatę.</div>';
+  } else {
+    // Brak zadatku, brak pełnej opłaty - pokaż tylko kwotę do zapłaty
+    paymentBox = '<div class="payment-box"><h3>💰 Status płatności</h3>Do zapłaty przy odbiorze: <b>' + fmt(payableNow) + '</b>.</div>';
+  }
 
   const html = '<!doctype html><html lang="pl"><head><meta charset="utf-8">' +
     '<title>Rozliczenie ' + docNo + ' — GardenSpa</title>' +
