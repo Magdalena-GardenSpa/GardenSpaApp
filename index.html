@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="pl">
 <head>
@@ -217,10 +218,18 @@ function computeCalc(f, equipment, settings, packages, clients, vouchers){
     const frozenIds = Object.keys(f.frozen_rates);
     if(frozenIds.length > 0){
       const virtualEquipment = frozenIds.map(id => {
-        const bieżący = equipment.find(e=>e.id===id);
-        return { ...(bieżący||{}), ...f.frozen_rates[id], id };
+        const bieżący = equipment.find(e=>e.id===id) || {};
+        const frozen = f.frozen_rates[id] || {};
+        // Bierzemy z frozen tylko wartości > 0 (chroni przed zerowymi snapshotami)
+        // - jeśli frozen ma zero/null/undefined, używamy bieżącej
+        const merged = {...bieżący};
+        Object.keys(frozen).forEach(k=>{
+          const v = frozen[k];
+          if(v !== null && v !== undefined && v !== '' && !(typeof v==='number' && v===0)) merged[k] = v;
+        });
+        merged.id = id;
+        return merged;
       });
-      // Sklej: zamrożone pierwsze, reszta z bieżącego (dla ewentualnych brakujących)
       equipment = [...virtualEquipment, ...equipment.filter(e=>!frozenIds.includes(e.id))];
     }
   }
@@ -1770,8 +1779,15 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
   };
 
   const restoreOffer = async (o) => {
-    try{ await sbUpdate("gs_offers","id",o.id,{status:"accepted"}); setOffers(p=>p.map(x=>x.id===o.id?{...x,status:"accepted"}:x)); flash("Przywrócono do aktywnych."); }
-    catch(ex){ setErr(String(ex.message||ex)); }
+    try{
+      // Przy przywracaniu odświeżamy zamrożone ceny do bieżącego cennika
+      // - unikamy sytuacji że zamrożone pola == 0 wyzerują kalkulację
+      const snap = buildRateSnapshot(o, equipment, settings);
+      const patch = {status:"accepted", frozen_rates:snap.frozen_rates, frozen_settings:snap.frozen_settings};
+      await sbUpdate("gs_offers","id",o.id,patch);
+      setOffers(p=>p.map(x=>x.id===o.id?{...x,...patch}:x));
+      flash("Przywrócono do aktywnych.");
+    }catch(ex){ setErr(String(ex.message||ex)); }
   };
 
   const advance = async (o) => {
@@ -1808,7 +1824,8 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
     if(!startPassed){
       // Prosty przypadek: tylko ważność minęła -> odśwież ją
       try{
-        const patch = {expires_at: computeExpiry(settings)};
+        const snap = buildRateSnapshot(o, equipment, settings);
+        const patch = {expires_at: computeExpiry(settings), frozen_rates:snap.frozen_rates, frozen_settings:snap.frozen_settings};
         await sbUpdate("gs_offers","id",o.id,patch);
         setOffers(p=>p.map(x=>x.id===o.id?{...x,...patch}:x));
         flash("Odświeżono ważność oferty — wróciła do aktywnych.");
@@ -1835,7 +1852,8 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
     if(!choice || choice.trim()==="3") return;
     const ch = String(choice).trim();
 
-    let patch = {expires_at: computeExpiry(settings)};
+    const snap = buildRateSnapshot(o, equipment, settings);
+    let patch = {expires_at: computeExpiry(settings), frozen_rates:snap.frozen_rates, frozen_settings:snap.frozen_settings};
     let msg = "";
 
     if(ch === "1"){
