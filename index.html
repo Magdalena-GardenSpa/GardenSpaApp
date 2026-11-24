@@ -244,19 +244,23 @@ function computeCalc(f, equipment, settings, packages, clients, vouchers){
   const qtyOf = () => +(f.days ?? f.qty) || 1;
   const daysRental = (e) => { const q=qtyOf(); if(f.mode!=='day') return rateOf(e); if(q<=1) return rateOf(e); let s=rateOf(e); for(let i=1;i<q;i++) s+=extraDayRate(e,i); return s; };
   let rentalBase, extraRental;
-  if(f.rate_override!=null && +f.rate_override>0){ rentalBase = +f.rate_override; extraRental = 0; }
+  const hasRateOv = f.rate_override!=null && f.rate_override!=='' && !isNaN(+f.rate_override);
+  if(hasRateOv){ rentalBase = +f.rate_override; extraRental = 0; }
   else { rentalBase = daysRental(eq); extraRental = extraEquip.reduce((s,e)=>s+daysRental(e),0); }
   // Mnożnik transportu: przy zestawie każdy sprzęt = osobny kurs (balia + sauna = 2× transport, 3 sprzęty = 3× transport)
   const equipCount = 1 + extraEquip.length;
   const freeKm = (+settings.free_km||0) * 4 * equipCount, kmRate = +settings.km_rate||0;
   const kmTotal = (+f.km||0) * 4 * equipCount;
   const billKm = Math.max(0, kmTotal - freeKm);
-  const transport = (f.transport_override!=null && +f.transport_override>0) ? +f.transport_override : billKm*kmRate;
+  const hasTranspOv = f.transport_override!=null && f.transport_override!=='' && !isNaN(+f.transport_override);
+  const transport = hasTranspOv ? +f.transport_override : billKm*kmRate;
   const addonsSum = (f.addon_ids||[]).reduce((s,id)=>{ const p=packages.find(x=>x.id===id); return s+(p?+p.price||0:0); },0);
   const customSum = (f.custom_items||[]).reduce((s,c)=>s+(+c.price||0),0);
   const depositAuto = (+eq.deposit||0) + extraEquip.reduce((s,e)=>s+(+e.deposit||0),0);
-  const deposit = (f.deposit_override!=null && +f.deposit_override>0) ? +f.deposit_override : depositAuto;
-  const zad = (f.zadatek_override!=null && +f.zadatek_override>0) ? +f.zadatek_override : (+settings.zadatek||0);
+  const hasDepOv = f.deposit_override!=null && f.deposit_override!=='' && !isNaN(+f.deposit_override);
+  const deposit = hasDepOv ? +f.deposit_override : depositAuto;
+  const hasZadOv = f.zadatek_override!=null && f.zadatek_override!=='' && !isNaN(+f.zadatek_override);
+  const zad = hasZadOv ? +f.zadatek_override : (+settings.zadatek||0);
   const client = clients.find(c=>c.phone===f.phone);
   const clientDiscType = client?.referral_discount_type || 'percent';
   const clientDiscValue = client?.referral_discount_value || client?.referral_pct_pending || 0;
@@ -373,6 +377,11 @@ function offerMsg(o, name, settings, equipment, packages, tiers, clients, vouche
   if(nudge) nudge = '\n' + nudge.trimStart();
   const nights = +(o.days ?? o.qty) || 1;
   const eqName = eq.name || '[wybierz sprzęt]';
+  // Pojemność głównego sprzętu + dodatkowych (jeśli zestaw)
+  const capBits = [];
+  if(eq.capacity) capBits.push(`${eq.name.toLowerCase().includes('sauna')?'sauna':'balia'} dla ${eq.capacity}`);
+  (calc.extraEquip||[]).forEach(e=>{ if(e.capacity) capBits.push(`${e.name.toLowerCase().includes('sauna')?'sauna':'balia'} dla ${e.capacity}`); });
+  const capLine = capBits.length ? `\n👥 ${capBits.join(' · ')}` : '';
   const headLine = (useTier ? `${eqName}${setLine} — ${tier}` : `${eqName}${setLine} — ${nights} ${dobaForm(nights)}`).replace(/\s+/g,' ').replace(/\s+—/,' —');
   const extrasLine = extras ? `\n${extras}.` : '';
   const zadShown = Math.min(calc.zadatek, payableNow);
@@ -392,7 +401,7 @@ function offerMsg(o, name, settings, equipment, packages, tiers, clients, vouche
   const woodLine = woodAlreadyMentioned
     ? (woodPkg ? `\n🔥 Każdy kolejny worek drewna: ${fmt(woodPkg.price)}.` : '')
     : `\n🔥 Pierwszy worek drewna na rozpalenie — gratis od nas${woodPkg?`, każdy kolejny ${fmt(woodPkg.price)}`:''}.`;
-  return `${greet} Oto Twoja oferta GardenSpa 🌿🛁\n${headLine}${dateLine}${extrasLine}${customLine}\n${breakdown}\nRazem: ${fmt(payableNow)}${zadClause}.\nDodatkowo kaucja zwrotna: ${fmt(calc.deposit)} płatna w dniu wynajmu.${woodLine}${altBlock}${nudge}${validLine}\n📩 Żeby zarezerwować ten termin, odpisz i wpłać zadatek ${fmt(zadShown>0?zadShown:calc.zadatek)} BLIK-iem na numer ${settings.blik_phone||''} — termin blokujemy od razu po wpłacie.\n📸 Zobacz naszą nową balię i saunę na zdjęciach: ${settings.social_url||'https://linktr.ee/GardenSpa_Wellness_'}`;
+  return `${greet} Oto Twoja oferta GardenSpa 🌿🛁\n${headLine}${capLine}${dateLine}${extrasLine}${customLine}\n${breakdown}\nRazem: ${fmt(payableNow)}${zadClause}.\nDodatkowo kaucja zwrotna: ${fmt(calc.deposit)} płatna w dniu wynajmu.${woodLine}${altBlock}${nudge}${validLine}\n📩 Żeby zarezerwować ten termin, odpisz i wpłać zadatek ${fmt(zadShown>0?zadShown:calc.zadatek)} BLIK-iem na numer ${settings.blik_phone||''} — termin blokujemy od razu po wpłacie.\n📸 Zobacz naszą nową balię i saunę na zdjęciach: ${settings.social_url||'https://linktr.ee/GardenSpa_Wellness_'}`;
 }
 
 /* ================= APP ================= */
@@ -469,7 +478,7 @@ function App(){
           <>
             {tab==="pulpit" && <Pulpit {...{equipment,offers,clients,settings,setTab,vouchers,goOffer}}/>}
             {tab==="kalendarz" && <Kalendarz {...{equipment,offers,clients,goOffer,initialYm:nav.calYm,clearCalYm}}/>}
-            {tab==="klienci" && <Klienci {...{clients,setClients,offers,equipment,settings,packages,tiers,vouchers,setOffers,flash,setErr,reload,setTab,goNewOffer}}/>}
+            {tab==="klienci" && <Klienci {...{clients,setClients,offers,equipment,settings,packages,tiers,vouchers,setOffers,flash,setErr,reload,setTab,goNewOffer,goOffer}}/>}
             {tab==="oferty" && <Oferty {...{offers,setOffers,equipment,packages,tiers,clients,setClients,settings,vouchers,setVouchers,flash,setErr,reload,focusOfferId:nav.focusOfferId,clearFocus:()=>setNav(n=>({...n,focusOfferId:null})),prefillPhone:nav.prefillPhone,clearPrefill:()=>setNav(n=>({...n,prefillPhone:null}))}}/>}
             {tab==="opinie" && <Opinie {...{reviews,setReviews,clients,offers,equipment,packages,vouchers,flash,setErr}}/>}
             {tab==="raport" && <Raport {...{offers,equipment,settings,packages,clients,vouchers,costs,goCalendar}}/>}
@@ -506,14 +515,31 @@ function Pulpit({equipment,offers,clients,settings,setTab,vouchers,goOffer}){
   const freeEquip = equipment.filter(e=>!busyIds.has(e.id));
   const todayOffers = [...deliveriesToday,...pickupsToday];
   const freeCount = freeEquip.length;
+  // JUTRO - co Cię czeka następnego dnia (żebyś wieczorem wiedziała co się szykuje)
+  const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate()+1);
+  const tNumT = tomorrow.getFullYear()*10000+tomorrow.getMonth()*100+tomorrow.getDate();
+  const deliveriesTomorrow = live.filter(o=>dateNum(o)===tNumT);
+  const pickupsTomorrow = live.filter(o=>endNum(o)===tNumT && dateNum(o)!==tNumT);
   const nameOf = o => { const c=clients.find(c=>c.phone===o.phone); return displayName(o.phone,(c&&c.name)||o.name); };
   const eqLabel = o => { const eq=equipment.find(e=>e.id===o.equipment_id); const extra=(o.extra_equip_ids||[]).length; return (eq?eq.name:"—")+(extra?` + ${extra} (zestaw)`:""); };
   const endLabel = o => { const e=new Date(o.year,o.month,o.day+(o.days||1)); return `${e.getDate()}.${e.getMonth()+1}.${e.getFullYear()}`; };
   const alerts = [
-    ...deliveriesToday.map(o=>({icon:"🚚", text:`Dostawa dziś: ${eqLabel(o)} → ${nameOf(o)}`, o})),
-    ...pickupsToday.map(o=>({icon:"📦", text:`Odbiór dziś: ${eqLabel(o)} od ${nameOf(o)}`, o})),
-    ...inProgress.filter(o=>dateNum(o)!==tNum && endNum(o)!==tNum).map(o=>({icon:"🔄", text:`Trwa wynajem: ${eqLabel(o)} · ${nameOf(o)} (do ${endLabel(o)})`, o})),
+    ...deliveriesToday.map(o=>({icon:"🚚", kind:"delivery", text:`Dostawa dziś: ${eqLabel(o)} → ${nameOf(o)}`, o})),
+    ...pickupsToday.map(o=>({icon:"📦", kind:"pickup", text:`Odbiór dziś: ${eqLabel(o)} od ${nameOf(o)}`, o})),
+    ...inProgress.filter(o=>dateNum(o)!==tNum && endNum(o)!==tNum).map(o=>({icon:"🔄", kind:"progress", text:`Trwa wynajem: ${eqLabel(o)} · ${nameOf(o)} (do ${endLabel(o)})`, o})),
   ];
+  const tomorrowAlerts = [
+    ...deliveriesTomorrow.map(o=>({icon:"🚚", kind:"delivery", text:`Dostawa jutro: ${eqLabel(o)} → ${nameOf(o)}`, o})),
+    ...pickupsTomorrow.map(o=>({icon:"📦", kind:"pickup", text:`Odbiór jutro: ${eqLabel(o)} od ${nameOf(o)}`, o})),
+  ];
+  // POPROŚ O OPINIĘ - oferty zrealizowane w ostatnich 7 dniach, dla których jeszcze nie wysłano prośby
+  const d7ago = new Date(today); d7ago.setDate(d7ago.getDate()-7);
+  const d7agoNum = d7ago.getFullYear()*10000+d7ago.getMonth()*100+d7ago.getDate();
+  const reviewTargets = offers.filter(o=>{
+    if(o.status!=="done") return false;
+    if(o.review_requested) return false; // już wysłano prośbę
+    return endNum(o) >= d7agoNum && endNum(o) <= tNum;
+  }).slice(0,5);
   if(!alerts.length) alerts.push({icon:"✓", text:"Brak dzisiejszych dostaw/odbiorów."});
   const todayNum = tNum;
   // Wszystkie zaakceptowane (zabezpieczone terminy = pewny plan pracy) - BEZ ograniczenia
@@ -548,8 +574,74 @@ function Pulpit({equipment,offers,clients,settings,setTab,vouchers,goOffer}){
         <button className="btn primary" onClick={()=>setTab("oferty")}>+ Nowa oferta / kalkulator</button>
         <button className="btn ghost" onClick={()=>setTab("kalendarz")}>Sprawdź dostępność</button>
       </div>
-      <h3 style={{fontSize:12.5,color:"var(--muted)",textTransform:"uppercase",letterSpacing:.5,marginBottom:8}}>Wymaga uwagi</h3>
-      {alerts.map((a,i)=>(<div key={i} className="card" style={{display:"flex",gap:10,alignItems:"center",marginBottom:8,padding:"10px 14px",cursor:a.o?"pointer":"default"}} onClick={()=>a.o&&goOffer(a.o)}><span>{a.icon}</span><span>{a.text}</span></div>))}
+      <h3 style={{fontSize:12.5,color:"var(--muted)",textTransform:"uppercase",letterSpacing:.5,marginBottom:8}}>Dziś — wymaga uwagi</h3>
+      {alerts.map((a,i)=>{
+        if(!a.o) return <div key={i} className="card" style={{display:"flex",gap:10,alignItems:"center",marginBottom:8,padding:"10px 14px"}}><span>{a.icon}</span><span>{a.text}</span></div>;
+        const addr = a.o.delivery_address || (clients.find(c=>c.phone===a.o.phone)?.city) || "";
+        const mapUrl = addr ? `https://maps.google.com/maps?q=${encodeURIComponent(addr+", Polska")}` : null;
+        const smsText = a.kind==="delivery" ? `Cześć ${(clients.find(c=>c.phone===a.o.phone)?.name||a.o.name||"").split(" ")[0]}! Jestem w drodze z ${eqLabel(a.o)} 🌿 Zaraz będę!` : a.kind==="pickup" ? `Cześć! Przypominamy — dziś odbiór ${eqLabel(a.o)}. Daj znać kiedy najwygodniej 🌿` : `Cześć! Jutro ostatni dzień wynajmu ${eqLabel(a.o)} — przypominamy o odbiorze. 🌿`;
+        const smsUrl = `sms:${a.o.phone.replace(/\s/g,"")}?body=${encodeURIComponent(smsText)}`;
+        return (<div key={i} className="card" style={{marginBottom:8,padding:"10px 14px"}}>
+          <div style={{display:"flex",gap:10,alignItems:"flex-start",cursor:"pointer"}} onClick={()=>goOffer(a.o)}>
+            <span style={{fontSize:16}}>{a.icon}</span>
+            <div style={{flex:1}}>
+              <div>{a.text}</div>
+              {addr && <div className="muted" style={{fontSize:11.5,marginTop:2}}>📍 {addr}</div>}
+            </div>
+          </div>
+          <div style={{display:"flex",gap:6,marginTop:8,flexWrap:"wrap"}}>
+            <a className="btn ghost sm" href={`tel:${a.o.phone.replace(/\s/g,"")}`} onClick={e=>e.stopPropagation()}>📞 Zadzwoń</a>
+            <a className="btn ghost sm" href={smsUrl} onClick={e=>e.stopPropagation()}>💬 SMS</a>
+            {mapUrl && <a className="btn ghost sm" href={mapUrl} target="_blank" rel="noopener" onClick={e=>e.stopPropagation()}>🗺 Mapa</a>}
+          </div>
+        </div>);
+      })}
+      {tomorrowAlerts.length>0 && <>
+        <h3 style={{fontSize:12.5,color:"var(--muted)",textTransform:"uppercase",letterSpacing:.5,margin:"18px 0 8px"}}>📅 Jutro — przygotuj się ({tomorrowAlerts.length})</h3>
+        {tomorrowAlerts.map((a,i)=>{
+          const addr = a.o.delivery_address || (clients.find(c=>c.phone===a.o.phone)?.city) || "";
+          const smsText = a.kind==="delivery" ? `Cześć ${(clients.find(c=>c.phone===a.o.phone)?.name||a.o.name||"").split(" ")[0]}! Przypominamy — jutro dostawa ${eqLabel(a.o)} 🌿 Do zobaczenia!` : `Cześć! Przypominamy — jutro odbiór ${eqLabel(a.o)}. Daj znać kiedy najwygodniej 🌿`;
+          const smsUrl = `sms:${a.o.phone.replace(/\s/g,"")}?body=${encodeURIComponent(smsText)}`;
+          return (<div key={i} className="card" style={{marginBottom:8,padding:"10px 14px",background:"#fcfbf5",border:"1px dashed #d4c89f"}}>
+            <div style={{display:"flex",gap:10,alignItems:"flex-start",cursor:"pointer"}} onClick={()=>goOffer(a.o)}>
+              <span style={{fontSize:16}}>{a.icon}</span>
+              <div style={{flex:1}}>
+                <div>{a.text}</div>
+                {addr && <div className="muted" style={{fontSize:11.5,marginTop:2}}>📍 {addr}</div>}
+              </div>
+            </div>
+            <div style={{display:"flex",gap:6,marginTop:8,flexWrap:"wrap"}}>
+              <a className="btn ghost sm" href={smsUrl} onClick={e=>e.stopPropagation()}>💬 Przypomnij SMS</a>
+            </div>
+          </div>);
+        })}
+      </>}
+      {reviewTargets.length>0 && <>
+        <h3 style={{fontSize:12.5,color:"var(--muted)",textTransform:"uppercase",letterSpacing:.5,margin:"18px 0 8px"}}>⭐ Poproś o opinię ({reviewTargets.length})</h3>
+        {reviewTargets.map(o=>{
+          const smsBase = settings.review_sms || "Cześć! Dziękujemy za wynajem u GardenSpa 🌿 Jeśli było super — podziel się swoją opinią! Twoja recenzja bardzo nam pomoże.";
+          const links = [];
+          if(settings.fb_url) links.push("🔵 FB: "+settings.fb_url);
+          if(settings.ig_url) links.push("📷 IG: "+settings.ig_url);
+          if(settings.google_url) links.push("🗺 Google: "+settings.google_url);
+          const linksLine = links.length ? "\n\n"+links.join("\n") : "";
+          const smsText = smsBase + linksLine;
+          const smsUrl = `sms:${o.phone.replace(/\s/g,"")}?body=${encodeURIComponent(smsText)}`;
+          return (<div key={o.id} className="card" style={{marginBottom:8,padding:"10px 14px",background:"#fffbea",border:"1px solid #e5c88a"}}>
+            <div style={{display:"flex",gap:10,alignItems:"flex-start",cursor:"pointer"}} onClick={()=>goOffer(o)}>
+              <span style={{fontSize:16}}>⭐</span>
+              <div style={{flex:1}}>
+                <div><b>{nameOf(o)}</b> <span className="muted">— {eqLabel(o)}</span></div>
+                <div className="muted" style={{fontSize:11.5,marginTop:2}}>Wynajem {endLabel(o)}</div>
+              </div>
+            </div>
+            <div style={{display:"flex",gap:6,marginTop:8,flexWrap:"wrap"}}>
+              <a className="btn ghost sm" href={smsUrl} onClick={async e=>{ e.stopPropagation(); try{ await sbUpdate("gs_offers","id",o.id,{review_requested:true}); }catch(ex){} }}>💬 Wyślij SMS z prośbą o opinię</a>
+            </div>
+            {links.length===0 && <div style={{fontSize:11,color:"#9a6b00",marginTop:6}}>⚠️ Dodaj linki do FB/Instagram w Ustawienia → Opinie i social, żeby klient wiedział gdzie zostawić opinię.</div>}
+          </div>);
+        })}
+      </>}
       <h3 style={{fontSize:12.5,color:"var(--muted)",textTransform:"uppercase",letterSpacing:.5,margin:"18px 0 8px"}}>✅ Nadchodzące — zaakceptowane ({upcomingAccepted.length})</h3>
       {upcomingAccepted.length===0 && <div className="empty">Brak zaakceptowanych zleceń.</div>}
       {upcomingAccepted.map(o=>(
@@ -712,7 +804,7 @@ function Kalendarz({equipment,offers,clients,goOffer,initialYm,clearCalYm}){
 }
 
 /* ================= KLIENCI ================= */
-function Klienci({clients,setClients,offers,equipment,settings,packages,tiers,vouchers,setOffers,flash,setErr,reload,setTab,goNewOffer}){
+function Klienci({clients,setClients,offers,equipment,settings,packages,tiers,vouchers,setOffers,flash,setErr,reload,setTab,goNewOffer,goOffer}){
   const [search,setSearch]=useState("");
   const [selPhone,setSelPhone]=useState(null);
   const [checked,setChecked]=useState({});
@@ -744,7 +836,8 @@ function Klienci({clients,setClients,offers,equipment,settings,packages,tiers,vo
       flash(`Usunięto klienta "${client.name||client.phone}".`);
     }catch(ex){ setErr(String(ex.message||ex)); }
   };
-  const history = sel ? offers.filter(o=>o.phone===sel.phone) : [];
+  const history = sel ? offers.filter(o=>o.phone===sel.phone && o.status!=="draft").sort((a,b)=>(b.year*10000+b.month*100+b.day)-(a.year*10000+a.month*100+a.day)) : [];
+  const draftOffers = sel ? offers.filter(o=>o.phone===sel.phone && o.status==="draft") : [];
 
   if(sel){
     return (
@@ -807,15 +900,49 @@ function Klienci({clients,setClients,offers,equipment,settings,packages,tiers,vo
             <button className="btn primary sm" onClick={()=>goNewOffer(sel.phone)}>+ Nowa oferta dla tego klienta</button>
           </div>
         </div>
-        <h3 style={{fontSize:12,color:"var(--muted)",textTransform:"uppercase",marginBottom:8}}>Historia</h3>
+        {draftOffers.length>0 && <>
+          <h3 style={{fontSize:12,color:"var(--muted)",textTransform:"uppercase",marginBottom:8}}>📝 Robocze ({draftOffers.length})</h3>
+          {draftOffers.map(o=>{ const eq=equipment.find(e=>e.id===o.equipment_id);
+            const calc = computeCalc(o,equipment,settings,packages,clients,vouchers);
+            return (<div key={o.id} className="card" style={{display:"flex",justifyContent:"space-between",marginBottom:8,background:"#faf9f5",border:"1px dashed #ccc",cursor:"pointer"}} onClick={()=>goOffer&&goOffer(o)}>
+              <div style={{flex:1,minWidth:0}}>
+                <b>{eq?eq.name:"—"}{calc.extraEquip.length>0?` + ${calc.extraEquip.map(e=>e.name).join(" + ")}`:""}</b>
+                <div className="muted" style={{fontSize:12}}>{dateRangeLabel(o)}</div>
+                {(o.voucher_code || o.internal_note || o.invoice_required) && <div style={{display:"flex",gap:4,marginTop:4,flexWrap:"wrap"}}>
+                  {o.voucher_code && <span style={{fontSize:10,fontWeight:600,color:"#9a6b00",background:"#fff4d4",padding:"1px 6px",borderRadius:8,border:"1px solid var(--gold)"}}>🎁 {o.voucher_code}</span>}
+                  {o.invoice_required && <span style={{fontSize:10,fontWeight:600,color:"#9a6b00",background:"#fdf0d9",padding:"1px 6px",borderRadius:8}}>📄 Wymaga faktury</span>}
+                  {o.internal_note && <span title={o.internal_note} style={{fontSize:10,fontWeight:600,color:"#6b4b00",background:"#fffbea",padding:"1px 6px",borderRadius:8,border:"1px solid #e5c88a"}}>📝</span>}
+                </div>}
+              </div>
+              <div style={{textAlign:"right"}}><span className="badge b-grey">Robocza</span><div style={{fontWeight:700,marginTop:4}}>{fmt(calc.total-calc.deposit)}</div></div>
+            </div>); })}
+        </>}
+        <h3 style={{fontSize:12,color:"var(--muted)",textTransform:"uppercase",marginBottom:8,marginTop:draftOffers.length>0?12:0}}>Historia ({history.length})</h3>
         {history.length===0 && <div className="empty">Brak wcześniejszych zleceń.</div>}
         {history.map(o=>{ const eq=equipment.find(e=>e.id===o.equipment_id);
           const calc = computeCalc(o,equipment,settings,packages,clients,vouchers);
-          const stMap={draft:["Robocza","b-grey"],sent:["Wysłana","b-blue"],accepted:["Zaakceptowana","b-green"],done:["Zrealizowana","b-amber"]};
-          const st = isInProgress(o) ? ["🔄 W trakcie najmu","b-blue"] : (stMap[o.status]||stMap.draft);
-          return (<div key={o.id} className="card" style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
-            <div><b>{eq?eq.name:"—"}{calc.extraEquip.length>0?` + ${calc.extraEquip.map(e=>e.name).join(" + ")}`:""}</b><div className="muted" style={{fontSize:12}}>{dateRangeLabel(o)}</div></div>
-            <div style={{textAlign:"right"}}><span className={"badge "+st[1]}>{st[0]}</span><div style={{fontWeight:700}}>{fmt(calc.total-calc.deposit)}</div></div>
+          const expired = o.status==="sent" && !o.zadatek_paid && o.expires_at && new Date(o.expires_at)<new Date();
+          let st;
+          if(expired) st = ["⏳ Wygasła","b-red"];
+          else if(isInProgress(o)) st = ["🔄 W trakcie","b-blue"];
+          else {
+            const stMap={sent:["📤 Wysłana","b-blue"],accepted:["✅ Zaakceptowana","b-green"],done:["📦 Zrealizowana","b-amber"]};
+            st = stMap[o.status] || ["Robocza","b-grey"];
+          }
+          return (<div key={o.id} className="card" style={{display:"flex",justifyContent:"space-between",marginBottom:8,cursor:"pointer"}} onClick={()=>goOffer&&goOffer(o)}>
+            <div style={{flex:1,minWidth:0}}>
+              <b>{eq?eq.name:"—"}{calc.extraEquip.length>0?` + ${calc.extraEquip.map(e=>e.name).join(" + ")}`:""}</b>
+              <div className="muted" style={{fontSize:12}}>{dateRangeLabel(o)}</div>
+              <div style={{display:"flex",gap:4,marginTop:4,flexWrap:"wrap"}}>
+                {o.voucher_code && <span style={{fontSize:10,fontWeight:600,color:"#9a6b00",background:"#fff4d4",padding:"1px 6px",borderRadius:8,border:"1px solid var(--gold)"}}>🎁 {o.voucher_code}</span>}
+                {o.zadatek_paid && o.status!=="done" && <span style={{fontSize:10,fontWeight:600,color:"var(--green-d)",background:"#e8f0e9",padding:"1px 6px",borderRadius:8}}>💰 Zadatek OK</span>}
+                {o.invoice_required && (o.invoice_issued
+                  ? <span style={{fontSize:10,fontWeight:600,color:"var(--green-d)",background:"#e8f0e9",padding:"1px 6px",borderRadius:8}}>📄 Faktura wyst.</span>
+                  : <span style={{fontSize:10,fontWeight:600,color:"#9a6b00",background:"#fdf0d9",padding:"1px 6px",borderRadius:8}}>📄 Wymaga faktury</span>)}
+                {o.internal_note && <span title={o.internal_note} style={{fontSize:10,fontWeight:600,color:"#6b4b00",background:"#fffbea",padding:"1px 6px",borderRadius:8,border:"1px solid #e5c88a"}}>📝</span>}
+              </div>
+            </div>
+            <div style={{textAlign:"right"}}><span className={"badge "+st[1]}>{st[0]}</span><div style={{fontWeight:700,marginTop:4}}>{fmt(calc.total-calc.deposit)}</div></div>
           </div>); })}
       </div>
     );
@@ -941,7 +1068,7 @@ function BroadcastModal({clients,filtered,onClose}){
 
 /* ================= OFERTY ================= */
 function emptyForm(settings){
-  return { phone:"", name:"", equipment_id:"", mode:"day", qty:1, km:10, addon_ids:[], extra_equip_ids:[], custom_items:[], use_tier:true, alt_options:[],
+  return { phone:"", name:"", equipment_id:"", mode:"day", qty:1, km:10, addon_ids:[], extra_equip_ids:[], custom_items:[], use_tier:true, alt_options:[], internal_note:"",
     rate_override:"", transport_override:"", zadatek_override:"", deposit_override:"", voucher_code:"", offer_cost:0, set_prices:{}, invoice_required:false,
     year:new Date().getFullYear(), month:new Date().getMonth(), day:new Date().getDate(), days:1, status:"draft" };
 }
@@ -954,6 +1081,8 @@ function OfferFormModal({onClose, initial, equipment, packages, tiers, clients, 
     return [...clients].sort((a,b)=>(lastAt[b.phone]||0)-(lastAt[a.phone]||0) || String(a.name||"").localeCompare(String(b.name||"")));
   },[clients,offers]);
   const [quick,setQuick]=useState(false);
+  // Zwijalna sekcja wariantów - domyślnie zwinięta (wariant jest opcjonalny)
+  const [showTiers,setShowTiers]=useState(initial && initial.use_tier!==false && initial.mode && initial.mode!=='day' ? true : false);
   const [localErr,setLocalErr]=useState("");
   useEffect(()=>{ if(!f.equipment_id && equipment[0]) setF(p=>({...p,equipment_id:equipment[0].id})); },[equipment]);
   const set=(k,v)=>setF(p=>({...p,[k]:v}));
@@ -1095,33 +1224,51 @@ function OfferFormModal({onClose, initial, equipment, packages, tiers, clients, 
           <div className="field"><label>Imię i nazwisko</label><input value={f.name} onChange={e=>set("name",e.target.value)}/></div>
         </div>
         <div className="field"><label>Miejscowość / adres dostawy</label><input value={f.delivery_address||""} onChange={e=>set("delivery_address",e.target.value)} placeholder="np. Oborniki"/></div>
+        <div className="field">
+          <label>📝 Notatka wewnętrzna (tylko dla Ciebie, nie trafia do klienta)</label>
+          <textarea rows="2" value={f.internal_note||""} onChange={e=>set("internal_note",e.target.value)} placeholder="np. Klient chce wcześniejszą dostawę, zapłata gotówką, dodatkowy worek drewna..." style={{background:"#fffbea",border:"1px solid #e5c88a"}}/>
+        </div>
         <div className="field"><label>Sprzęt</label>
           <select value={f.equipment_id} onChange={e=>set("equipment_id",e.target.value)}>
             {equipment.map(e=>(<option key={e.id} value={e.id}>{e.name}{e.capacity?" ("+e.capacity+")":""}</option>))}
           </select>
         </div>
-        <label>Wariant (opcjonalny)</label>
-        <div className="row3" style={{marginBottom:10}}>
-          <div className="card" style={{cursor:"pointer",borderColor:f.use_tier===false?"var(--green)":"var(--line)",background:f.use_tier===false?"var(--green-l)":"#fff",padding:12}} onClick={()=>setF(p=>({...p,use_tier:false,mode:'day'}))}>
-            <div style={{fontWeight:700,marginBottom:2}}>— Bez wariantu</div>
-            <div className="muted" style={{fontSize:11.5,marginBottom:4}}>sama cena za dobę, bez opisu</div>
-            <div style={{fontWeight:700,color:"var(--green-d)"}}>{fmt(rate('day'))} / doba</div>
+        {/* Zwijalna sekcja wariantów - opcjonalna, nie zajmuje miejsca domyślnie */}
+        <div style={{marginBottom:10,border:"1px solid var(--line)",borderRadius:8,background:"#fcfbf5"}}>
+          <div onClick={()=>setShowTiers(s=>!s)} style={{cursor:"pointer",padding:"10px 12px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <div>
+              <b style={{fontSize:13,color:"var(--green-d)"}}>✨ Wariant ofertowy (opcjonalny)</b>
+              <div className="muted" style={{fontSize:11,marginTop:2}}>
+                {f.use_tier!==false && f.mode!=='day' ? `Wybrany: ${(tiers.find(t=>t.mode===f.mode)||{}).title||f.mode}` : "Brak — standardowa cena za dobę"}
+              </div>
+            </div>
+            <span style={{fontSize:14,color:"var(--muted)"}}>{showTiers?"▲ zwiń":"▼ rozwiń"}</span>
           </div>
-          {tiers.map(t=>{ const sel = f.use_tier!==false && f.mode===t.mode; const r = rate(t.mode); if(!r) return null;
-            return (<div key={t.id} className="card" style={{cursor:"pointer",borderColor:sel?"var(--green)":"var(--line)",background:sel?"var(--green-l)":"#fff",padding:12}} onClick={()=>{ if(sel) setF(p=>({...p,use_tier:false})); else setF(p=>({...p,mode:t.mode,use_tier:true, ...(t.mode==='weekend'?{days:(+(p.days??p.qty)>=3?3:2),qty:(+(p.days??p.qty)>=3?3:2)}:{}), ...(t.mode==='week'?{days:7,qty:7}:{})})); }}>
-              <div style={{fontWeight:700,marginBottom:2}}>{t.emoji} {t.title}</div>
-              <div className="muted" style={{fontSize:11.5,marginBottom:4}}>{t.subtitle}</div>
-              <div style={{fontWeight:700,color:"var(--green-d)"}}>{fmt(rate(t.mode))}{t.mode==='day'?" / doba":""}</div>
-            </div>); })}
+          {showTiers && <div style={{padding:"0 12px 12px"}}>
+            <div className="muted" style={{fontSize:11.5,marginBottom:8}}>Dodaj opisowy wariant (np. „Wieczór we dwoje", „Weekend") z klimatycznym tytułem, zachętą i gratisami. Jeśli pominiesz — klient dostaje standardową cenę za dobę.</div>
+            <div className="row3" style={{marginBottom:10}}>
+              <div className="card" style={{cursor:"pointer",borderColor:f.use_tier===false?"var(--green)":"var(--line)",background:f.use_tier===false?"var(--green-l)":"#fff",padding:12}} onClick={()=>setF(p=>({...p,use_tier:false,mode:'day'}))}>
+                <div style={{fontWeight:700,marginBottom:2}}>— Bez wariantu</div>
+                <div className="muted" style={{fontSize:11.5,marginBottom:4}}>sama cena za dobę, bez opisu</div>
+                <div style={{fontWeight:700,color:"var(--green-d)"}}>{fmt(rate('day'))} / doba</div>
+              </div>
+              {tiers.map(t=>{ const sel = f.use_tier!==false && f.mode===t.mode; const r = rate(t.mode); if(!r) return null;
+                return (<div key={t.id} className="card" style={{cursor:"pointer",borderColor:sel?"var(--green)":"var(--line)",background:sel?"var(--green-l)":"#fff",padding:12}} onClick={()=>{ if(sel) setF(p=>({...p,use_tier:false})); else setF(p=>({...p,mode:t.mode,use_tier:true, ...(t.mode==='weekend'?{days:(+(p.days??p.qty)>=3?3:2),qty:(+(p.days??p.qty)>=3?3:2)}:{}), ...(t.mode==='week'?{days:7,qty:7}:{})})); }}>
+                  <div style={{fontWeight:700,marginBottom:2}}>{t.emoji} {t.title}</div>
+                  <div className="muted" style={{fontSize:11.5,marginBottom:4}}>{t.subtitle}</div>
+                  <div style={{fontWeight:700,color:"var(--green-d)"}}>{fmt(rate(t.mode))}{t.mode==='day'?" / doba":""}</div>
+                </div>); })}
+            </div>
+            <div className="muted" style={{fontSize:11.5,marginBottom:8}}>Kliknij wybrany wariant ponownie, aby go odznaczyć.</div>
+            {f.mode==='weekend' && <div style={{display:"flex",gap:6,marginBottom:10,alignItems:"center",flexWrap:"wrap"}}>
+              <span style={{fontSize:12,color:"var(--muted)"}}>Długość weekendu:</span>
+              {[2,3].map(n=>(<button key={n} type="button" className={"btn sm "+((+(f.days??f.qty)||2)===n?"primary":"ghost")} onClick={()=>setF(p=>({...p,days:n,qty:n}))}>{n} doby · {fmt(n>=3?(+eqSel.rate_weekend3||+eqSel.rate_weekend||0):(+eqSel.rate_weekend||0))}</button>))}
+            </div>}
+            <label style={{cursor:"pointer",display:"block",marginBottom:8}} onClick={()=>set("use_tier", f.use_tier===false)}>{f.use_tier===false?"☐":"☑"} Dołącz opis wariantu do oferty (tytuł, gratisy, zachęta)</label>
+            {f.use_tier!==false && (()=>{ const activeTier = tiers.find(t=>t.mode===f.mode); return activeTier && activeTier.show_upsell && activeTier.upsell_text ?
+              <div className="banner ok" style={{fontSize:12}}>💡 {activeTier.upsell_text}</div> : null; })()}
+          </div>}
         </div>
-        <div className="muted" style={{fontSize:11.5,marginBottom:8}}>Kliknij wybrany wariant ponownie, aby go odznaczyć.</div>
-        {f.mode==='weekend' && <div style={{display:"flex",gap:6,marginBottom:10,alignItems:"center",flexWrap:"wrap"}}>
-          <span style={{fontSize:12,color:"var(--muted)"}}>Długość weekendu:</span>
-          {[2,3].map(n=>(<button key={n} type="button" className={"btn sm "+((+(f.days??f.qty)||2)===n?"primary":"ghost")} onClick={()=>setF(p=>({...p,days:n,qty:n}))}>{n} doby · {fmt(n>=3?(+eqSel.rate_weekend3||+eqSel.rate_weekend||0):(+eqSel.rate_weekend||0))}</button>))}
-        </div>}
-        <label style={{cursor:"pointer",display:"block",marginBottom:8}} onClick={()=>set("use_tier", f.use_tier===false)}>{f.use_tier===false?"☐":"☑"} Dołącz opis wariantu do oferty (tytuł, gratisy, zachęta)</label>
-        {f.use_tier!==false && (()=>{ const activeTier = tiers.find(t=>t.mode===f.mode); return activeTier && activeTier.show_upsell && activeTier.upsell_text ?
-          <div className="banner ok" style={{fontSize:12}}>💡 {activeTier.upsell_text}</div> : null; })()}
         <div className="row3">
           <div className="field"><label>Data od</label><input type="date" value={`${f.year}-${String(f.month+1).padStart(2,'0')}-${String(f.day).padStart(2,'0')}`} onChange={e=>{ const [y,m,d]=e.target.value.split('-').map(Number); const start=new Date(y,m-1,d); const end=new Date(f.year,f.month,f.day+(+(f.days??f.qty)||1)); const days=Math.max(1,Math.round((end-start)/86400000)); const sd=start.getDay(),ed=end.getDay(); const isWknd = sd===5 && (ed===6||ed===0||ed===1) && days>=2 && days<=3; const newMode = (f.mode==='hour'||f.mode==='week') ? f.mode : (isWknd ? 'weekend' : 'day'); setF(p=>({...p,year:y,month:m-1,day:d,days,qty:days,mode:newMode})); }}/></div>
           <div className="field"><label>Data do</label><input type="date" value={(()=>{const e2=new Date(f.year,f.month,f.day+(+(f.days??f.qty)||1)); return `${e2.getFullYear()}-${String(e2.getMonth()+1).padStart(2,'0')}-${String(e2.getDate()).padStart(2,'0')}`;})()} onChange={e=>{ const [y,m,d]=e.target.value.split('-').map(Number); const end=new Date(y,m-1,d), start=new Date(f.year,f.month,f.day); const days=Math.max(1,Math.round((end-start)/86400000)); const sd=start.getDay(),ed=end.getDay(); const isWknd = sd===5 && (ed===6||ed===0||ed===1) && days>=2 && days<=3; const newMode = (f.mode==='hour'||f.mode==='week') ? f.mode : (isWknd ? 'weekend' : 'day'); setF(p=>({...p,days,qty:days,mode:newMode})); }}/></div>
@@ -1149,7 +1296,7 @@ function OfferFormModal({onClose, initial, equipment, packages, tiers, clients, 
           </div>
         </>}
         <label>Ręczna korekta kwot (zostaw puste, aby liczyć automatycznie)</label>
-        {(+f.rate_override>0||+f.transport_override>0||+f.zadatek_override>0||+f.deposit_override>0) && <div style={{marginBottom:8}}>
+        {((f.rate_override!=null&&f.rate_override!=='')||(f.transport_override!=null&&f.transport_override!=='')||(f.zadatek_override!=null&&f.zadatek_override!=='')||(f.deposit_override!=null&&f.deposit_override!=='')) && <div style={{marginBottom:8}}>
           <button type="button" className="btn ghost sm" onClick={()=>setF(p=>({...p,rate_override:"",transport_override:"",zadatek_override:"",deposit_override:""}))}>🔄 Wyczyść wszystkie korekty — licz automatycznie</button>
         </div>}
         <div className="row2" style={{marginBottom:10}}>
@@ -1189,7 +1336,7 @@ function OfferFormModal({onClose, initial, equipment, packages, tiers, clients, 
         </div>
 
         <div className="calc-box">
-          {f.rate_override!=null && +f.rate_override>0 && <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginBottom:6,paddingBottom:6,borderBottom:"1px dashed var(--line)"}}>
+          {f.rate_override!=null && f.rate_override!=='' && <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginBottom:6,paddingBottom:6,borderBottom:"1px dashed var(--line)"}}>
             <span style={{fontSize:11.5,color:"#9a6b00"}}>⚠️ Cena wpisana ręcznie ({fmt(f.rate_override)}) — zmiany dat i dób jej nie przeliczają.</span>
             <button className="btn ghost sm" onClick={()=>set("rate_override","")}>Przelicz od nowa</button>
           </div>}
@@ -1223,6 +1370,110 @@ function OfferFormModal({onClose, initial, equipment, packages, tiers, clients, 
   );
 }
 
+function generateOfferPDF(o, equipment, packages, tiers, clients, settings, vouchers){
+  const eq = equipment.find(e=>e.id===o.equipment_id) || {};
+  const extraEquips = (o.extra_equip_ids||[]).map(id=>equipment.find(e=>e.id===id)).filter(Boolean);
+  const calc = computeCalc(o, equipment, settings, packages, clients||[], vouchers||[]);
+  const client = (clients||[]).find(c=>c.phone===o.phone);
+  const clientName = (client && client.name) || o.name || o.phone;
+  const clientAddr = o.delivery_address || (client && client.city) || "";
+  const addonNames = (o.addon_ids||[]).map(id=>(packages.find(p=>p.id===id)||{}).name).filter(Boolean);
+  const customItems = (o.custom_items||[]).filter(ci=>ci.label);
+  const logo = settings.logo_url || "https://ugc.production.linktr.ee/dce7fc8e-f896-412b-b1b8-4a47ce1d35e5_1000001073.jpeg";
+  const today = new Date().toLocaleDateString('pl-PL');
+  const payableNow = calc.total - calc.deposit;
+  const docNo = o.offer_no || ('GS/' + o.year + '/' + String(o.id||"").slice(0,6).toUpperCase());
+  const blik = settings.blik_phone || '';
+
+  // Buduj HTML przez konkatenację (nie template literals - unikamy problemów z $)
+  const styles = '<style>' +
+    '@page { size: A4; margin: 15mm; }' +
+    '* { box-sizing: border-box; }' +
+    'body { font-family: Georgia, serif; color: #153826; margin: 0; padding: 0; }' +
+    '.container { max-width: 210mm; }' +
+    '.hdr { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #153826; padding-bottom: 12px; margin-bottom: 20px; }' +
+    '.logo { width: 70px; height: 70px; border-radius: 8px; object-fit: cover; }' +
+    '.brand { text-align: right; }' +
+    '.brand h1 { margin: 0; font-size: 22px; color: #153826; letter-spacing: 1px; }' +
+    '.brand p { margin: 2px 0; font-size: 11px; color: #66756c; }' +
+    '.title { font-size: 20px; font-weight: bold; margin: 18px 0 6px; color: #153826; }' +
+    '.docNo { font-size: 12px; color: #66756c; margin-bottom: 12px; }' +
+    '.row { display: flex; gap: 20px; margin-bottom: 16px; }' +
+    '.col { flex: 1; }' +
+    '.col h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #66756c; margin: 0 0 6px; }' +
+    '.col .val { font-size: 13px; line-height: 1.4; }' +
+    'table { width: 100%; border-collapse: collapse; margin: 20px 0 10px; }' +
+    'th, td { text-align: left; padding: 8px 10px; font-size: 13px; border-bottom: 1px solid #ddd; }' +
+    'th { background: #f0f7f1; color: #153826; font-weight: bold; }' +
+    '.right { text-align: right; }' +
+    '.total { background: #f0f7f1; font-weight: bold; font-size: 15px; }' +
+    '.payment-box { background: #faf9f5; border: 1px solid #ddd; border-radius: 6px; padding: 12px 16px; margin: 16px 0; }' +
+    '.payment-box h3 { margin: 0 0 8px; font-size: 13px; color: #153826; }' +
+    '.deposit-box { background: #fdf0d9; border: 1px solid #e5c88a; border-radius: 6px; padding: 10px 14px; margin: 14px 0; font-size: 12.5px; }' +
+    '.footer { margin-top: 30px; padding-top: 14px; border-top: 1px solid #ddd; font-size: 10px; color: #66756c; text-align: center; }' +
+    '.signature-row { display: flex; gap: 40px; margin-top: 50px; }' +
+    '.signature-row .sig { flex: 1; text-align: center; }' +
+    '.signature-row .line { border-top: 1px solid #333; padding-top: 4px; font-size: 10px; color: #66756c; }' +
+    '.note { font-size: 11px; color: #66756c; font-style: italic; margin-top: 6px; }' +
+    '.print-btn { position: fixed; top: 10px; right: 10px; padding: 10px 20px; background: #153826; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: bold; }' +
+    '@media print { .print-btn { display: none; } }' +
+    '</style>';
+
+  const rows = [];
+  rows.push('<tr><td><b>' + (eq.name||'Sprzęt') + '</b>' +
+    (eq.capacity ? ' <span style="color:#66756c;font-size:11px">(' + eq.capacity + ')</span>' : '') +
+    (extraEquips.length ? '<br><span style="color:#66756c;font-size:12px">+ zestaw: ' + extraEquips.map(e=>e.name).join(', ') + '</span>' : '') +
+    '</td><td class="right">' + fmt(calc.rental) + '</td></tr>');
+  if(calc.transport>0) rows.push('<tr><td>Transport (dojazd i odbiór)</td><td class="right">' + fmt(calc.transport) + '</td></tr>');
+  if(addonNames.length) rows.push('<tr><td>Dodatki: ' + addonNames.join(', ') + '</td><td class="right">' + fmt(calc.addonsSum) + '</td></tr>');
+  if(customItems.length) customItems.forEach(ci=>{ rows.push('<tr><td>' + ci.label + '</td><td class="right">' + fmt(ci.price) + '</td></tr>'); });
+  if(calc.voucherAmt>0) rows.push('<tr><td style="color:#9a6b00">🎁 Voucher ' + (o.voucher_code||'') + '</td><td class="right" style="color:#9a6b00">− ' + fmt(calc.voucherAmt) + '</td></tr>');
+  if(calc.discountAmt>0) rows.push('<tr><td style="color:#9a6b00">Rabat</td><td class="right" style="color:#9a6b00">− ' + fmt(calc.discountAmt) + '</td></tr>');
+  rows.push('<tr class="total"><td>Razem do zapłaty za wynajem</td><td class="right">' + fmt(payableNow) + '</td></tr>');
+
+  const paymentBox = o.zadatek_paid
+    ? '<div class="payment-box"><h3>💰 Status płatności</h3>Zadatek <b>' + fmt(calc.zadatek) + '</b> wpłacony' +
+      (o.zadatek_paid_date ? ' dnia ' + new Date(o.zadatek_paid_date).toLocaleDateString('pl-PL') : '') + '.' +
+      (payableNow>calc.zadatek ? '<br>Pozostało do zapłaty: <b>' + fmt(payableNow-calc.zadatek) + '</b>' : '<br>Kwota wynajmu rozliczona w całości.') +
+      '</div>'
+    : '<div class="payment-box"><h3>💰 Status płatności</h3>Zadatek <b>' + fmt(calc.zadatek) + '</b> — oczekuje na wpłatę.</div>';
+
+  const html = '<!doctype html><html lang="pl"><head><meta charset="utf-8">' +
+    '<title>Rozliczenie ' + docNo + ' — GardenSpa</title>' +
+    styles +
+    '</head><body>' +
+    '<button class="print-btn" onclick="window.print()">🖨 Drukuj / Zapisz jako PDF</button>' +
+    '<div class="container">' +
+    '<div class="hdr">' +
+    '<img src="' + logo + '" class="logo" alt="GardenSpa" onerror="this.style.display=\'none\'">' +
+    '<div class="brand"><h1>GardenSpa</h1><p>Wynajem balii i sauny mobilnej</p><p>' + blik + ' · Murowana Goślina</p></div>' +
+    '</div>' +
+    '<div class="title">Rozliczenie wynajmu</div>' +
+    '<div class="docNo">Nr: <b>' + docNo + '</b> · Data wystawienia: ' + today + '</div>' +
+    '<div class="row">' +
+    '<div class="col"><h3>Klient</h3><div class="val"><b>' + clientName + '</b><br>' + (o.phone||'') + '<br>' + clientAddr + '</div></div>' +
+    '<div class="col"><h3>Termin wynajmu</h3><div class="val"><b>' + dateRangeLabel(o) + '</b><br>' +
+    (o.delivery_time ? 'Dostawa: ' + o.delivery_time : '') +
+    (o.delivery_time && o.pickup_time ? ' · ' : '') +
+    (o.pickup_time ? 'Odbiór: ' + o.pickup_time : '') +
+    '<br>Liczba dób: <b>' + (o.days||o.qty||1) + '</b></div></div>' +
+    '</div>' +
+    '<table><thead><tr><th>Pozycja</th><th class="right">Cena (zł)</th></tr></thead><tbody>' +
+    rows.join('') +
+    '</tbody></table>' +
+    paymentBox +
+    '<div class="deposit-box"><b>Kaucja zwrotna: ' + fmt(calc.deposit) + '</b><br>' +
+    '<span class="note">Pobierana w dniu wynajmu. Zwracana po zwrocie sprzętu w stanie nienaruszonym (pomniejszona o ewentualne uszkodzenia lub dodatkowe ustalenia).</span></div>' +
+    '<div class="signature-row"><div class="sig"><div class="line">Podpis klienta</div></div><div class="sig"><div class="line">Podpis GardenSpa</div></div></div>' +
+    '<div class="footer">Dziękujemy za skorzystanie z GardenSpa 🌿<br>Ten dokument jest rozliczeniem na życzenie klienta i nie zastępuje faktury VAT.</div>' +
+    '</div></body></html>';
+
+  const win = window.open("", "_blank", "width=800,height=1000");
+  if(!win){ alert("Przeglądarka zablokowała nowe okno. Zezwól na pop-upy dla tej strony."); return; }
+  win.document.write(html);
+  win.document.close();
+}
+
 function OfferDetailModal({offer,onClose,equipment,packages,tiers,clients,settings,vouchers,onToggleZadatek,onEdit,onDelete,onExtend,onToggleInvoice}){
   const eq = equipment.find(e=>e.id===offer.equipment_id);
   const calc = computeCalc(offer,equipment,settings,packages,clients,vouchers);
@@ -1240,6 +1491,10 @@ function OfferDetailModal({offer,onClose,equipment,packages,tiers,clients,settin
           <b>{eq?eq.name:"—"}</b><span className={"badge "+st[1]}>{st[0]}</span>
         </div>
         {offer.delivery_address && <div className="muted" style={{fontSize:12.5,marginBottom:8}}>📍 {offer.delivery_address}</div>}
+        {offer.internal_note && <div style={{background:"#fffbea",border:"1px solid #e5c88a",borderRadius:8,padding:"8px 10px",marginBottom:10,fontSize:12.5}}>
+          <div style={{fontWeight:700,color:"#9a6b00",marginBottom:3,fontSize:11,textTransform:"uppercase",letterSpacing:.4}}>📝 Notatka wewnętrzna</div>
+          <div style={{color:"#6b4b00",whiteSpace:"pre-wrap"}}>{offer.internal_note}</div>
+        </div>}
         {offer.deposit_returned && <div className="muted" style={{fontSize:12.5,marginBottom:8,color:"var(--green-d)"}}>✅ Kaucja zwrócona</div>}
         <div className="muted" style={{fontSize:12,marginBottom:2}}>{displayName(offer.phone,(c&&c.name)||offer.name)} · {offer.phone}</div>
         <div className="muted" style={{fontSize:12,marginBottom:12}}>Termin: {dateRangeLabel(offer)}</div>
@@ -1333,6 +1588,7 @@ function OfferDetailModal({offer,onClose,equipment,packages,tiers,clients,settin
           {offer.invoice_issued && offer.invoice_date && <div style={{fontSize:11,color:"var(--muted)",marginTop:2}}>📄 {new Date(offer.invoice_date).toLocaleDateString('pl-PL')}</div>}
         </div>
         {isInProgress(offer) && onExtend && <button className="btn" style={{marginTop:12,width:"100%",background:"#fdf0d9",color:"#9a6b00",fontWeight:700}} onClick={onExtend}>➕ Przedłuż wynajem</button>}
+        <button className="btn ghost" style={{marginTop:12,width:"100%"}} onClick={()=>generateOfferPDF(offer,equipment,packages,tiers,clients,settings,vouchers)}>🖨 Wygeneruj PDF rozliczenia (na życzenie klienta)</button>
         <div style={{display:"flex",gap:8,marginTop:12}}>
           <button className="btn ghost" style={{flex:1}} onClick={onEdit}>✏️ Edytuj</button>
           <button className="btn ghost" style={{flex:1,color:"#b3261e",borderColor:"#e3b3ab"}} onClick={onDelete}>🗑 Usuń</button>
@@ -1458,7 +1714,7 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
         discount_value_override: (f.discount_value_override===""||f.discount_value_override==null)?null:+f.discount_value_override,
         rate_override: f.rate_override===""?null:+f.rate_override, transport_override: f.transport_override===""?null:+f.transport_override,
         zadatek_override: f.zadatek_override===""?null:+f.zadatek_override, deposit_override: f.deposit_override===""?null:+f.deposit_override,
-        voucher_code:f.voucher_code, offer_cost:f.offer_cost, year:f.year, month:f.month, day:f.day, days:f.days||f.qty||1, delivery_address:f.delivery_address||"", deposit_returned:!!f.deposit_returned, invoice_required:!!f.invoice_required,
+        voucher_code:f.voucher_code, offer_cost:f.offer_cost, year:f.year, month:f.month, day:f.day, days:f.days||f.qty||1, delivery_address:f.delivery_address||"", internal_note:f.internal_note||"", deposit_returned:!!f.deposit_returned, invoice_required:!!f.invoice_required,
         frozen_rates: snap.frozen_rates, frozen_settings: snap.frozen_settings };
       if(f.id){
         const newStatus = f.status||"draft";
@@ -1544,8 +1800,69 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
     catch(ex){ setErr(String(ex.message||ex)); }
   };
   const refreshExpiry = async (o) => {
-    try{ const exp=computeExpiry(settings);
-      await sbUpdate("gs_offers","id",o.id,{expires_at:exp}); setOffers(p=>p.map(x=>x.id===o.id?{...x,expires_at:exp}:x)); flash("Odświeżono ważność oferty."); }
+    // Oferta wygasła jest gdy: minęła data ważności LUB minęła data startu wynajmu (bez zadatku)
+    // Strategia: odśwież expires_at. Jeśli data wynajmu też minęła -> pokaż 3 opcje do wyboru.
+    const startDate = new Date(o.year, o.month, o.day);
+    const startPassed = startDate.getTime() < Date.now();
+
+    if(!startPassed){
+      // Prosty przypadek: tylko ważność minęła -> odśwież ją
+      try{
+        const patch = {expires_at: computeExpiry(settings)};
+        await sbUpdate("gs_offers","id",o.id,patch);
+        setOffers(p=>p.map(x=>x.id===o.id?{...x,...patch}:x));
+        flash("Odświeżono ważność oferty — wróciła do aktywnych.");
+      }catch(ex){ setErr(String(ex.message||ex)); }
+      return;
+    }
+
+    // Data wynajmu minęła — 3 opcje:
+    // 1) klient i tak teraz wpłaca (np. tydzień temu miał termin, ale dziś wpłaca i realizuje spóźniony)
+    //    -> oznacz zadatek jako wpłacony (ofertę nadal pokażesz w kalendarzu jako "w trakcie" lub historia)
+    // 2) klient chce przełożyć termin
+    //    -> zapytaj o nową datę
+    // 3) anuluj
+    const choice = prompt(
+      `Oferta wygasła — data wynajmu (${o.day}.${o.month+1}.${o.year}) już minęła.\n\n` +
+      `Co zrobić?\n` +
+      `  1 - Klient wpłacił zadatek (zaakceptuj mimo spóźnienia, zachowaj starą datę)\n` +
+      `  2 - Przełóż na nową datę (podaj np. 15.12.2026)\n` +
+      `  3 - Anuluj\n\n` +
+      `Wpisz: 1, 2 lub datę w formacie DD.MM.RRRR`,
+      ""
+    );
+
+    if(!choice || choice.trim()==="3") return;
+    const ch = String(choice).trim();
+
+    let patch = {expires_at: computeExpiry(settings)};
+    let msg = "";
+
+    if(ch === "1"){
+      // Zadatek wpłacony — zaakceptuj
+      patch.zadatek_paid = true;
+      patch.zadatek_paid_date = new Date().toISOString().slice(0,10);
+      patch.status = "accepted";
+      msg = `✅ Oferta zaakceptowana — zadatek wpłacony, stara data zachowana (${o.day}.${o.month+1}.${o.year}).`;
+    } else {
+      // Spróbuj sparsować jako datę (opcja 2 - nowa data)
+      const dateStr = ch === "2"
+        ? prompt(`Podaj NOWĄ datę rozpoczęcia wynajmu (format: DD.MM.RRRR)\nnp. ${new Date(Date.now()+7*86400000).toLocaleDateString('pl-PL')}`, new Date(Date.now()+7*86400000).toLocaleDateString('pl-PL'))
+        : ch;
+      if(!dateStr) return;
+      const m = String(dateStr).trim().match(/^(\d{1,2})[.\-\/](\d{1,2})[.\-\/](\d{4})$/);
+      if(!m){ alert("Zły format. Wpisz 1, 2 lub datę w formacie DD.MM.RRRR (np. 15.12.2026)"); return; }
+      const [_,d,mm,yy] = m;
+      const nDay = +d, nMonth = +mm - 1, nYear = +yy;
+      const newStartDate = new Date(nYear, nMonth, nDay);
+      if(isNaN(newStartDate) || newStartDate.getTime() < Date.now()-86400000){
+        alert("Data musi być w przyszłości."); return;
+      }
+      patch.year = nYear; patch.month = nMonth; patch.day = nDay;
+      msg = `Przywrócono ofertę z nową datą: ${nDay}.${nMonth+1}.${nYear}`;
+    }
+
+    try{ await sbUpdate("gs_offers","id",o.id,patch); setOffers(p=>p.map(x=>x.id===o.id?{...x,...patch}:x)); flash(msg); }
     catch(ex){ setErr(String(ex.message||ex)); }
   };
   const toggleZadatek = async (o) => {
@@ -1661,6 +1978,7 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
             {o.invoice_required && (o.invoice_issued
               ? <span style={{fontSize:11,fontWeight:600,color:"var(--green-d)",background:"#e8f0e9",padding:"2px 7px",borderRadius:10,border:"1px solid #b8d5bc"}}>📄 Faktura wystawiona</span>
               : <span style={{fontSize:11,fontWeight:600,color:"#9a6b00",background:"#fdf0d9",padding:"2px 7px",borderRadius:10,border:"1px solid #e5c88a"}}>📄 Wymaga faktury</span>)}
+            {o.internal_note && <span title={o.internal_note} style={{fontSize:11,fontWeight:600,color:"#6b4b00",background:"#fffbea",padding:"2px 7px",borderRadius:10,border:"1px solid #e5c88a"}}>📝 Notatka</span>}
           </div>
           {o.status==="sent" && <div style={{fontSize:11,color:"#9a6b00",marginTop:3}}>⏳ {expired?"Oferta wygasła — odśwież warunki":`Ważna jeszcze ${hoursLeft} godz.`}</div>}
           <div style={{display:"flex",gap:6,marginTop:9,flexWrap:"wrap"}} onClick={e=>e.stopPropagation()}>
@@ -1681,7 +1999,7 @@ function Oferty({offers,setOffers,equipment,packages,tiers,clients,setClients,se
       {modal && modal!=="new" && <OfferDetailModal offer={modal} onClose={()=>setModal(null)} equipment={equipment} packages={packages} tiers={tiers} clients={clients} settings={settings} vouchers={vouchers} onToggleZadatek={toggleZadatek} onToggleInvoice={toggleInvoice} onEdit={()=>{setEditingOffer(modal);setModal(null);}} onDelete={()=>delOffer(modal)} onExtend={()=>{ const o=modal; setModal(null); setExtendModal(o); }}/>}
       {voucherModal && <VoucherModal onClose={()=>setVoucherModal(false)} settings={settings} clients={clients} equipment={equipment} offers={offers} setOffers={setOffers} setErr={setErr} flash={flash} setVouchers={setVouchers}/>}
       {voucherEdit && <VoucherModal onClose={()=>setVoucherEdit(null)} initial={voucherEdit} settings={settings} clients={clients} equipment={equipment} offers={offers} setOffers={setOffers} setErr={setErr} flash={flash} setVouchers={setVouchers}/>}
-      {voucherTerm && <VoucherTermModal voucher={voucherTerm} onClose={()=>setVoucherTerm(null)} equipment={equipment} clients={clients} settings={settings} setErr={setErr} flash={flash} setVouchers={setVouchers} setOffers={setOffers}/>}
+      {voucherTerm && <VoucherTermModal voucher={voucherTerm} onClose={()=>setVoucherTerm(null)} equipment={equipment} clients={clients} setClients={setClients} settings={settings} setErr={setErr} flash={flash} setVouchers={setVouchers} setOffers={setOffers}/>}
       {extendModal && <ExtendModal offer={extendModal} onClose={()=>setExtendModal(null)} equipment={equipment} settings={settings} packages={packages} clients={clients} vouchers={vouchers} offers={offers} flash={flash} setErr={setErr} onSaved={(patch)=>{ setOffers(p=>p.map(x=>x.id===extendModal.id?{...x,...patch}:x)); setExtendModal(null); }}/>}
       {sendModal && <SendMessageModal data={sendModal} onClose={()=>setSendModal(null)} onSend={doSend}/>}
     </div>
@@ -1986,37 +2304,103 @@ function VoucherModal({onClose,setErr,flash,setVouchers,clients,equipment,offers
   );
 }
 
-function VoucherTermModal({voucher,onClose,equipment,clients,settings,setErr,flash,setVouchers,setOffers}){
+function VoucherTermModal({voucher,onClose,equipment,clients,settings,setErr,flash,setVouchers,setOffers,setClients}){
   const today = new Date();
   const buyer = clients.find(c=>c.phone===voucher.buyer_phone);
   const toISO = (y,m,d)=>`${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
   const startISO = toISO(today.getFullYear(),today.getMonth(),today.getDate());
   const endDefault = new Date(today); endDefault.setDate(endDefault.getDate()+1);
-  const [f,setF]=useState({equipment_id:voucher.equipment_id||(equipment[0]?equipment[0].id:""), date_start:startISO, date_end:toISO(endDefault.getFullYear(),endDefault.getMonth(),endDefault.getDate()),
-    time_start:"12:00", time_end:"11:00", delivery_address:(buyer&&buyer.address)||""});
+  const voucherValue = +(voucher.agreed_total||voucher.value||0);
+  const [f,setF]=useState({
+    equipment_id:voucher.equipment_id||(equipment[0]?equipment[0].id:""),
+    date_start:startISO,
+    date_end:toISO(endDefault.getFullYear(),endDefault.getMonth(),endDefault.getDate()),
+    time_start:"12:00", time_end:"11:00",
+    delivery_address:(buyer&&buyer.address)||"",
+    // Obdarowany (opcjonalny) - jeśli puste, zostaje kupujący jako klient
+    giftee_phone:"", giftee_name:"",
+    // Status po utworzeniu
+    initial_status:"accepted",
+    // Do kogo wysyłamy SMS
+    sms_to:"buyer", // buyer | giftee | none
+    // Ustalona kwota całkowita (może być > wartości vouchera = dopłata)
+    total_amount: voucherValue,
+    // Jak rozlicz dopłatę jeśli jest
+    doplata_mode:"covered", // covered | zadatek | gotowka | paid
+    // Dodatkowe uwagi (idą do internal_note oferty)
+    note:""
+  });
   const set=(k,v)=>setF(p=>({...p,[k]:v}));
+  const doplata = Math.max(0, (+f.total_amount||0) - voucherValue);
+
   const save = async ()=>{
     if(!f.equipment_id){ alert("Wybierz sprzęt."); return; }
     const [y,m,d]=f.date_start.split('-').map(Number);
     const [ey,em,ed]=f.date_end.split('-').map(Number);
     const days = Math.max(1, Math.round((new Date(ey,em-1,ed)-new Date(y,m-1,d))/86400000));
+    const useGiftee = !!(f.giftee_phone && f.giftee_phone.trim());
+    const clientPhone = useGiftee ? f.giftee_phone.trim() : voucher.buyer_phone;
+    const clientName = useGiftee ? (f.giftee_name||"").trim() : ((buyer&&buyer.name)||voucher.buyer_name||"");
+
+    // Automatyczna notatka wewnętrzna
+    const autoNote = [
+      `🎁 Realizacja vouchera ${voucher.code} (wartość: ${voucherValue} zł).`,
+      `Kupujący: ${(buyer&&buyer.name)||voucher.buyer_name||voucher.buyer_phone}.`,
+      useGiftee ? `Obdarowany: ${clientName||clientPhone}.` : null,
+      doplata>0 ? `Dopłata: ${doplata} zł — ${f.doplata_mode==="zadatek"?"zadatek BLIK przy rezerwacji":f.doplata_mode==="gotowka"?"gotówka przy odbiorze":f.doplata_mode==="paid"?"już wpłacona":"brak (voucher pokrywa całość)"}.` : null,
+      f.note ? `Uwagi: ${f.note}` : null
+    ].filter(Boolean).join("\n");
+
+    // Zadatek status - jeśli voucher w całości pokrywa + nic do dopłaty = zadatek wpłacony
+    // Jeśli dopłata gotówką przy odbiorze = też zadatek ma status wpłacony (voucher = zadatek)
+    // Jeśli dopłata zadatek BLIK = zadatek NIE wpłacony (klient ma wpłacić)
+    const zadPaid = f.doplata_mode==="covered" || f.doplata_mode==="gotowka" || f.doplata_mode==="paid";
+
     try{
-      const offerBody = { phone:voucher.buyer_phone, name:(buyer&&buyer.name)||voucher.buyer_name||"", equipment_id:f.equipment_id, mode:"day", qty:days, km:0,
-        addon_ids:[], extra_equip_ids:[], custom_items:[], rate_override: Math.round((voucher.agreed_total||voucher.value||0)/days),
-        transport_override:0, zadatek_override:0, deposit_override:null, voucher_code:voucher.code, offer_cost:0,
-        year:y, month:m-1, day:d, days, delivery_address:f.delivery_address, delivery_time:f.time_start, pickup_time:f.time_end, status:"accepted", zadatek_paid:true };
+      // Dodaj obdarowanego do klientów jeśli trzeba
+      if(useGiftee && !clients.find(c=>c.phone===clientPhone)){
+        const ins = await sbInsert("gs_clients",{phone:clientPhone, name:clientName, city:f.delivery_address||""});
+        setClients && setClients(p=>[ins[0],...p]);
+      }
+      const offerBody = {
+        phone:clientPhone, name:clientName, equipment_id:f.equipment_id, mode:"day", qty:days, km:0,
+        addon_ids:[], extra_equip_ids:[], custom_items:[],
+        rate_override: Math.round((+f.total_amount||voucherValue)/days),
+        transport_override:0, zadatek_override:0, deposit_override:null,
+        voucher_code:voucher.code, offer_cost:0,
+        year:y, month:m-1, day:d, days,
+        delivery_address:f.delivery_address, delivery_time:f.time_start, pickup_time:f.time_end,
+        status:f.initial_status, zadatek_paid:zadPaid,
+        internal_note:autoNote
+      };
       const ins = await sbInsert("gs_offers",offerBody);
       setOffers(p=>[ins[0],...p]);
       await sbUpdate("gs_vouchers","id",voucher.id,{linked_offer_id:ins[0].id, equipment_id:f.equipment_id, year:y, month:m-1, day:d, days, time_start:f.time_start, time_end:f.time_end});
       setVouchers(p=>p.map(x=>x.id===voucher.id?{...x,linked_offer_id:ins[0].id, equipment_id:f.equipment_id, year:y, month:m-1, day:d, days}:x));
-      flash("Ustalono termin realizacji vouchera — wpisano do kalendarza."); onClose();
+
+      const statusLabel = f.initial_status==="draft"?"Robocza":f.initial_status==="sent"?"Wysłana":"Zaakceptowana";
+      const smsHint = f.sms_to==="buyer" ? " · wyślij SMS do kupującego z listy ofert"
+        : f.sms_to==="giftee" ? " · wyślij SMS do obdarowanego z listy ofert"
+        : "";
+      flash(`✅ Oferta z vouchera utworzona · status: ${statusLabel}${doplata>0?` · dopłata: ${doplata} zł`:""}${smsHint}`);
+      onClose();
     }catch(ex){ setErr(String(ex.message||ex)); }
   };
+
   return (
     <div className="overlay" onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
       <div className="modal">
         <button className="close-x" onClick={onClose}>×</button>
         <h2>📅 Ustal termin realizacji — {voucher.code}</h2>
+
+        {/* Blok informacyjny */}
+        <div style={{background:"#f0f7f1",border:"1px solid var(--green)",borderRadius:8,padding:"8px 10px",marginBottom:12,fontSize:12.5}}>
+          <div style={{fontWeight:700,color:"var(--green-d)",marginBottom:3}}>🎁 Voucher {voucher.code}</div>
+          <div>Kupujący: <b>{(buyer&&buyer.name)||voucher.buyer_name||"—"}</b> · tel. {voucher.buyer_phone}</div>
+          <div>Wartość vouchera: <b>{voucherValue} zł</b> {voucher.paid?"✓ opłacony":"⏳ do opłacenia"}</div>
+        </div>
+
+        <h4 style={{fontSize:12,color:"var(--muted)",textTransform:"uppercase",margin:"4px 0 6px",letterSpacing:.4}}>Termin wynajmu</h4>
         <div className="field"><label>Sprzęt</label>
           <select value={f.equipment_id} onChange={e=>set("equipment_id",e.target.value)}>
             {equipment.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}
@@ -2031,8 +2415,62 @@ function VoucherTermModal({voucher,onClose,equipment,clients,settings,setErr,fla
           <div className="field"><label>Godz. odbioru</label><input type="time" value={f.time_end} onChange={e=>set("time_end",e.target.value)}/></div>
         </div>
         <div className="field"><label>Adres dostawy</label><input value={f.delivery_address} onChange={e=>set("delivery_address",e.target.value)}/></div>
-        <div className="muted" style={{fontSize:12}}>Wpis pojawi się w kalendarzu i w ofertach oznaczony 🎁. Kaucja rozliczana standardowo jak przy zwykłym wynajmie.</div>
-        <div className="modal-actions"><button className="btn primary" onClick={save}>Zapisz termin</button></div>
+
+        <h4 style={{fontSize:12,color:"var(--muted)",textTransform:"uppercase",margin:"14px 0 6px",letterSpacing:.4}}>Obdarowany (opcjonalnie)</h4>
+        <div className="muted" style={{fontSize:11.5,marginBottom:6}}>Jeśli voucher kupiono dla kogoś innego — podaj tu dane obdarowanego. Jeśli zostawisz puste, oferta zostanie wystawiona na kupującego.</div>
+        <div className="row2">
+          <div className="field"><label>Numer telefonu</label><input value={f.giftee_phone} onChange={e=>set("giftee_phone",e.target.value)} placeholder="opcjonalnie"/></div>
+          <div className="field"><label>Imię / nazwisko</label><input value={f.giftee_name} onChange={e=>set("giftee_name",e.target.value)} placeholder="opcjonalnie"/></div>
+        </div>
+
+        <h4 style={{fontSize:12,color:"var(--muted)",textTransform:"uppercase",margin:"14px 0 6px",letterSpacing:.4}}>Rozliczenie</h4>
+        <div className="field">
+          <label>Ustalona kwota całkowita (zł)</label>
+          <input type="number" value={f.total_amount} onChange={e=>set("total_amount",e.target.value)}/>
+          <div className="muted" style={{fontSize:11,marginTop:3}}>
+            Wartość vouchera: <b>{voucherValue} zł</b>
+            {doplata>0 && <span style={{color:"#9a6b00"}}> · ⚠️ Dopłata: <b>{doplata} zł</b></span>}
+            {doplata===0 && <span style={{color:"var(--green-d)"}}> · ✓ Voucher pokrywa całość</span>}
+          </div>
+        </div>
+        {doplata>0 && <div className="field">
+          <label>Jak rozliczyć dopłatę {doplata} zł?</label>
+          <select value={f.doplata_mode} onChange={e=>set("doplata_mode",e.target.value)}>
+            <option value="zadatek">💳 Zadatek BLIK przy rezerwacji (jak przy zwykłej ofercie)</option>
+            <option value="gotowka">💵 Gotówka / BLIK przy odbiorze</option>
+            <option value="paid">✅ Już wpłacona</option>
+          </select>
+        </div>}
+        <div className="muted" style={{fontSize:11,marginTop:-4,marginBottom:10,padding:"6px 8px",background:"#f5f5f5",borderRadius:6}}>💡 Kaucja zwrotna jest ZAWSZE rozliczana standardowo w dniu wynajmu — niezależnie od vouchera.</div>
+
+        <h4 style={{fontSize:12,color:"var(--muted)",textTransform:"uppercase",margin:"14px 0 6px",letterSpacing:.4}}>Status i wysyłka</h4>
+        <div className="field">
+          <label>Status oferty po utworzeniu</label>
+          <select value={f.initial_status} onChange={e=>set("initial_status",e.target.value)}>
+            <option value="accepted">✅ Zaakceptowana (wszystko ustalone — gotowa rezerwacja)</option>
+            <option value="sent">📤 Wysłana (czekam na akceptację/dopłatę klienta)</option>
+            <option value="draft">📝 Robocza (jeszcze dopracuję przed wysłaniem)</option>
+          </select>
+        </div>
+        <div className="field">
+          <label>Do kogo wysłać SMS ofertowy?</label>
+          <select value={f.sms_to} onChange={e=>set("sms_to",e.target.value)}>
+            <option value="buyer">Do kupującego: {(buyer&&buyer.name)||voucher.buyer_name||voucher.buyer_phone}</option>
+            {f.giftee_phone && <option value="giftee">Do obdarowanego: {f.giftee_name||f.giftee_phone}</option>}
+            <option value="none">Nie wysyłaj teraz (później z listy ofert)</option>
+          </select>
+          <div className="muted" style={{fontSize:11,marginTop:3}}>Wysyłkę zrobisz po zapisaniu — przyciskiem SMS/WhatsApp w ofercie.</div>
+        </div>
+
+        <div className="field">
+          <label>📝 Dodatkowe uwagi (notatka wewnętrzna)</label>
+          <textarea rows="2" value={f.note} onChange={e=>set("note",e.target.value)} placeholder="np. klient prosi o wcześniejszą dostawę, konkretne ustalenia z kupującym..." style={{background:"#fffbea",border:"1px solid #e5c88a"}}/>
+        </div>
+
+        <div className="modal-actions">
+          <button className="btn ghost" onClick={onClose}>Anuluj</button>
+          <button className="btn primary" onClick={save}>Zapisz ofertę z vouchera</button>
+        </div>
       </div>
     </div>
   );
@@ -2184,6 +2622,46 @@ function Raport({offers,equipment,settings,packages,clients,vouchers,costs,goCal
   const allTimeNet = allTimeRevenue - allTimeCosts;
   const roiPct = totalInvestment>0 ? Math.round((allTimeNet/totalInvestment)*100) : 0;
 
+  // === CASH FLOW 30 DNI ===
+  // Oferty aktywne (status accepted/sent) z datą startu w ciągu najbliższych 30 dni
+  const now = new Date(); const d30 = new Date(now); d30.setDate(d30.getDate()+30);
+  const activeNext30 = offers.filter(o=>{
+    if(o.status!=="accepted" && o.status!=="sent") return false;
+    if(isOfferExpired(o)) return false;
+    const start = new Date(o.year, o.month, o.day);
+    return start >= now && start <= d30;
+  });
+  // Zadatki już wpłacone (gotówka którą masz) + oczekujące (potencjalne wpływy)
+  const zadatkiWplacone = activeNext30.filter(o=>o.zadatek_paid).reduce((s,o)=>{
+    const c = computeCalc(o,equipment,settings,packages,clients,vouchers); return s+c.zadatek; },0);
+  const zadatkiOczekujace = activeNext30.filter(o=>!o.zadatek_paid).reduce((s,o)=>{
+    const c = computeCalc(o,equipment,settings,packages,clients,vouchers); return s+c.zadatek; },0);
+  const doplataPrzyOdbiorze = activeNext30.reduce((s,o)=>{
+    const c = computeCalc(o,equipment,settings,packages,clients,vouchers);
+    const payable = c.total - c.deposit;
+    return s + Math.max(0, payable - c.zadatek); },0);
+  const cashFlowTotal = zadatkiWplacone + zadatkiOczekujace + doplataPrzyOdbiorze;
+
+  // === TREND ROK DO ROKU ===
+  // Porównaj przychody tego roku vs ubiegłego do tego samego dnia
+  const curYear = now.getFullYear();
+  const prevYear = curYear - 1;
+  const dayOfYearNow = Math.floor((now - new Date(curYear,0,0))/86400000);
+  const thisYearRev = realized.filter(o=>o.year===curYear).reduce((s,o)=>{
+    const dn = Math.floor((new Date(o.year,o.month,o.day) - new Date(curYear,0,0))/86400000);
+    if(dn > dayOfYearNow) return s;
+    const c = computeCalc(o,equipment,settings,packages,clients,vouchers);
+    return s + (c.total - c.deposit);
+  },0);
+  const prevYearRev = realized.filter(o=>o.year===prevYear).reduce((s,o)=>{
+    const dn = Math.floor((new Date(o.year,o.month,o.day) - new Date(prevYear,0,0))/86400000);
+    if(dn > dayOfYearNow) return s;
+    const c = computeCalc(o,equipment,settings,packages,clients,vouchers);
+    return s + (c.total - c.deposit);
+  },0);
+  const yoyPct = prevYearRev>0 ? Math.round(((thisYearRev-prevYearRev)/prevYearRev)*100) : (thisYearRev>0 ? 100 : 0);
+  const yoyAbs = thisYearRev - prevYearRev;
+
   return (
     <div>
       <div className="topbar"><div><h1>Raport</h1><p>Przychody, koszty, ROI</p></div></div>
@@ -2224,6 +2702,45 @@ function Raport({offers,equipment,settings,packages,clients,vouchers,costs,goCal
           </div>
         </div>);
       })()}
+      <h3 style={{fontSize:12,color:"var(--muted)",textTransform:"uppercase",margin:"18px 0 8px"}}>💰 Cash Flow — wpływy w następnych 30 dniach</h3>
+      <div className="card" style={{marginBottom:12,padding:14,background:"#f0f7f1",border:"1px solid var(--green)"}}>
+        <div style={{fontSize:11,color:"var(--muted)",marginBottom:8}}>Przewidywane wpływy z zaakceptowanych i wysłanych ofert z terminem w okresie 30 dni</div>
+        <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:5}}>
+          <span>✅ Zadatki już wpłacone</span>
+          <span style={{fontWeight:700,color:"var(--green-d)"}}>{fmt(zadatkiWplacone)}</span>
+        </div>
+        <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:5}}>
+          <span style={{color:zadatkiOczekujace>0?"#9a6b00":"var(--muted)"}}>⏳ Zadatki oczekujące (klienci mają wpłacić)</span>
+          <span style={{fontWeight:600,color:zadatkiOczekujace>0?"#9a6b00":"var(--muted)"}}>{fmt(zadatkiOczekujace)}</span>
+        </div>
+        <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:5}}>
+          <span>💵 Dopłaty przy odbiorze (gotówka/BLIK)</span>
+          <span style={{fontWeight:600}}>{fmt(doplataPrzyOdbiorze)}</span>
+        </div>
+        <div style={{display:"flex",justifyContent:"space-between",fontSize:15,fontWeight:700,color:"var(--green-d)",paddingTop:10,borderTop:"1px dashed #cfe0d1",marginTop:6}}>
+          <span>RAZEM WPŁYWY (30 dni)</span>
+          <span>{fmt(cashFlowTotal)}</span>
+        </div>
+        <div className="muted" style={{fontSize:11,marginTop:6}}>Dotyczy {activeNext30.length} {activeNext30.length===1?"oferty":activeNext30.length<5?"ofert":"ofert"}. Kaucja NIE jest wliczona (zwracana klientowi).</div>
+      </div>
+
+      <h3 style={{fontSize:12,color:"var(--muted)",textTransform:"uppercase",margin:"18px 0 8px"}}>📈 Trend rok do roku (do dziś)</h3>
+      <div className="card" style={{marginBottom:12,padding:14}}>
+        <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:5}}>
+          <span>Przychód {curYear} (1.01 - {now.getDate()}.{now.getMonth()+1})</span>
+          <span style={{fontWeight:700,color:"var(--green-d)"}}>{fmt(thisYearRev)}</span>
+        </div>
+        <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:5}}>
+          <span>Przychód {prevYear} (ten sam okres)</span>
+          <span style={{color:"var(--muted)"}}>{fmt(prevYearRev)}</span>
+        </div>
+        <div style={{display:"flex",justifyContent:"space-between",fontSize:15,fontWeight:700,paddingTop:10,borderTop:"1px dashed var(--line)",marginTop:6,color:yoyAbs>=0?"var(--green-d)":"#b3261e"}}>
+          <span>{yoyAbs>=0?"📈 Wzrost":"📉 Spadek"}</span>
+          <span>{yoyAbs>=0?"+":""}{fmt(yoyAbs)} ({yoyAbs>=0?"+":""}{yoyPct}%)</span>
+        </div>
+        {prevYearRev===0 && <div className="muted" style={{fontSize:11,marginTop:6}}>ℹ️ Brak danych z {prevYear} roku — porównanie będzie wiarygodne po pełnym roku działalności.</div>}
+      </div>
+
       <h3 style={{fontSize:12,color:"var(--muted)",textTransform:"uppercase",marginBottom:8}}>ROI — zwrot z inwestycji w sprzęt</h3>
       <div className="card" style={{marginBottom:10}}>
         <div className="calc-line"><span>Inwestycja w sprzęt (łącznie)</span><span>{fmt(totalInvestment)}</span></div>
@@ -2308,6 +2825,7 @@ function Ustawienia({settings,setSettings,equipment,setEquipment,packages,setPac
     ["tiers","✨","Warianty ofertowe",`${tiers.length} warianty`,"marketing"],
     ["promo","🎟️","Kody promocyjne / polecenia","rabat, wiadomość, ważność","marketing"],
     ["offer_tpl","✉️","Szablon oferty","dodatkowy tekst dołączany do SMS/WA","marketing"],
+    ["reviews_links","⭐","Opinie i social","linki do FB/Instagram, prośba o opinię","marketing"],
   ];
   const GROUPS = [["marketing","📣 Marketing i sprzedaż"],["base","⚙️ Ustawienia bazowe"]];
 
@@ -2463,6 +2981,33 @@ function Ustawienia({settings,setSettings,equipment,setEquipment,packages,setPac
       <div className="card row2">
         <div><label>Darmowe km (w 1 stronę)</label><input type="number" defaultValue={settings.free_km} onBlur={ev=>saveSettings({free_km:+ev.target.value||0})}/></div>
         <div><label>Zł / km powyżej</label><input type="number" defaultValue={settings.km_rate} onBlur={ev=>saveSettings({km_rate:+ev.target.value||0})}/></div>
+      </div>
+      </>)}
+
+      {mod==="reviews_links" && (<>
+      <h3 style={{fontSize:12,color:"var(--muted)",textTransform:"uppercase",marginBottom:8}}>Opinie klientów</h3>
+      <div className="card" style={{marginBottom:10}}>
+        <div className="field">
+          <label>🔵 Facebook — link do strony (gdzie klient może zostawić opinię)</label>
+          <input defaultValue={settings.fb_url||""} onBlur={ev=>saveSettings({fb_url:ev.target.value})} placeholder="np. https://facebook.com/GardenSpa"/>
+        </div>
+        <div className="field">
+          <label>📷 Instagram — link do profilu</label>
+          <input defaultValue={settings.ig_url||""} onBlur={ev=>saveSettings({ig_url:ev.target.value})} placeholder="np. https://instagram.com/gardenspa_wellness"/>
+        </div>
+        <div className="field">
+          <label>🗺 Google Maps (wizytówka firmy) — opcjonalne</label>
+          <input defaultValue={settings.google_url||""} onBlur={ev=>saveSettings({google_url:ev.target.value})} placeholder="pozostaw puste jeśli jeszcze nie masz wizytówki"/>
+          <div className="muted" style={{fontSize:11,marginTop:4}}>💡 Google Business Profile jest bezpłatny i NIE wymaga NIP. Założysz go na <b>google.com/business</b> — klienci mogą wtedy zostawiać opinie publicznie w Google Maps.</div>
+        </div>
+      </div>
+      <h3 style={{fontSize:12,color:"var(--muted)",textTransform:"uppercase",margin:"18px 0 8px"}}>Szablon prośby o opinię</h3>
+      <div className="card">
+        <div className="field">
+          <label>Tekst SMS wysyłany do klienta po zrealizowanym wynajmie</label>
+          <textarea rows="4" defaultValue={settings.review_sms||"Cześć! Dziękujemy za wynajem u GardenSpa 🌿 Jeśli było super — podziel się swoją opinią! Twoja recenzja bardzo nam pomoże."} onBlur={ev=>saveSettings({review_sms:ev.target.value})}/>
+          <div className="muted" style={{fontSize:11,marginTop:4}}>💡 Linki do FB/Instagram zostaną automatycznie dołączone na końcu SMS-a.</div>
+        </div>
       </div>
       </>)}
 
